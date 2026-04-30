@@ -1,12 +1,5 @@
 def analyze_image_with_ai(image_bytes):
-    try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=[
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": """
+    prompt = """
 Analyser billedet.
 
 Du må KUN vurdere pris ud fra IDENTISKE eller næsten identiske produkter i Danmark.
@@ -21,19 +14,20 @@ Regler:
 - realistisk brugtpris
 - ignorér outliers
 - ingen forklaring
-"""},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": image_bytes
-                            }
-                        }
-                    ]
-                }
-            ]
-        )
+"""
 
-        return response.text
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=[
+            prompt,
+            {
+                "mime_type": "image/jpeg",
+                "data": image_bytes
+            }
+        ]
+    )
+
+    return response.text
 
     except Exception as e:
         print("AI FEJL:", str(e))
