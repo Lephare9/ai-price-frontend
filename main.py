@@ -1,3 +1,5 @@
+import base64
+
 def analyze_image_with_ai(image_bytes):
     prompt = """
 Analyser billedet.
@@ -9,12 +11,9 @@ Svar KUN i JSON:
   "name": "1-3 ord produktnavn",
   "price": tal
 }
-
-Regler:
-- realistisk brugtpris
-- ignorér outliers
-- ingen forklaring
 """
+
+    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
     response = client.models.generate_content(
         model="gemini-1.5-flash",
@@ -22,16 +21,12 @@ Regler:
             prompt,
             {
                 "mime_type": "image/jpeg",
-                "data": image_bytes
+                "data": image_base64
             }
         ]
     )
 
     return response.text
-
-    except Exception as e:
-        print("AI FEJL:", str(e))
-        return '{"name": "ukendt", "price": 0}'
 --------- JSON PARSER ----------
 def extract_json(text):
     try:
