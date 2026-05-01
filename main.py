@@ -25,37 +25,23 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 # ---------- AI ----------
-import base64
-
 def analyze_image_with_ai(image_bytes):
     print("🔥 FUNCTION STARTED")
 
     try:
         prompt = """
-Returnér KUN JSON:
+Returnér KUN gyldig JSON.
 {"name":"kort navn","price":123}
 """
 
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        # Convert bytes → image
+        image = Image.open(io.BytesIO(image_bytes))
 
         print("🔥 CALLING AI...")
 
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=[
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": image_base64
-                            }
-                        }
-                    ]
-                }
-            ]
+            contents=[prompt, image]
         )
 
         print("🔥 AI CALLED")
@@ -68,6 +54,27 @@ Returnér KUN JSON:
     except Exception as e:
         print("🔥 AI FEJL:", str(e))
         return '{"name":"ukendt","price":0}'
+
+
+# ---------- JSON ----------
+def extract_json(text):
+    try:
+        print("🔥 PARSER INPUT:", text)
+
+        text = text.replace("```json", "").replace("```", "")
+
+        match = re.search(r"\{.*?\}", text, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+
+            if isinstance(data.get("price"), str):
+                data["price"] = int(re.sub(r"\D", "", data["price"]) or 0)
+
+            print("🔥 PARSED JSON:", data)
+            return data
+
+    except Exception as e:
+        print("🔥 JSON FEJL:", str(e))
 
     return {"name": "ukendt", "price": 0}
 
