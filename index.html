@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Price Scanner</title>
+  <title>AI Pris Scanner</title>
 
   <style>
     body {
@@ -85,11 +85,11 @@
 
 <body>
 
-  <h1>📸 AI Price Scanner</h1>
+  <h1>📸 AI Pris Scanner</h1>
 
   <div class="upload-box">
     <input type="file" id="file" accept="image/*"><br>
-    <button id="btn" onclick="upload()">Scan item</button>
+    <button id="btn" onclick="upload()">Scan genstand</button>
     <div id="status" class="loader"></div>
   </div>
 
@@ -102,7 +102,7 @@
       const btn = document.getElementById("btn");
 
       if (!file) {
-        alert("Please choose an image");
+        alert("Vælg et billede først");
         return;
       }
 
@@ -112,7 +112,7 @@
       const imageURL = URL.createObjectURL(file);
 
       btn.disabled = true;
-      document.getElementById("status").innerText = "⏳ Analyzing image...";
+      document.getElementById("status").innerText = "⏳ Analyserer billede...";
 
       try {
         const res = await fetch("https://ai-pricing-agent.onrender.com/analyze", {
@@ -126,12 +126,12 @@
           <div class="card">
             <img src="${imageURL}" />
             <div class="name">${data.description}</div>
-            <div class="price">${data.price} DKK</div>
+            <div class="price">${data.price} kr</div>
             <div class="reason">${data.reason || ""}</div>
           </div>
         `;
       } catch (err) {
-        document.getElementById("status").innerText = "❌ Error occurred";
+        document.getElementById("status").innerText = "❌ Der opstod en fejl";
       }
 
       document.getElementById("status").innerText = "";
