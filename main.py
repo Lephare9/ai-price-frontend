@@ -1,4 +1,5 @@
 print("🔥 HTTP VERSION ACTIVE 🔥")
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -7,10 +8,9 @@ import json
 import base64
 import requests
 
-print("🔥 HTTP VERSION ACTIVE 🔥")
-
 app = FastAPI()
 
+# 🌐 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,7 +33,7 @@ def analyze_image_with_ai(image_bytes):
         print("🔥 CALLING AI (HTTP)...")
 
         response = requests.post(
-            "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-vision:generateContent",
             headers={"Content-Type": "application/json"},
             params={"key": os.getenv("GEMINI_API_KEY")},
             json={
@@ -112,6 +112,7 @@ async def analyze(file: UploadFile = File(...)):
     }
 
 
+# ---------- TEST ----------
 @app.get("/")
 def root():
     return {"status": "ok"}
