@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
+from PIL import Image
+import io
 import os
 import re
 import json
@@ -32,22 +34,13 @@ Returnér KUN gyldig JSON.
 {"name":"kort navn","price":123}
 """
 
+        image = Image.open(io.BytesIO(image_bytes))
+
         print("🔥 CALLING AI...")
 
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=[
-                genai.types.Content(
-                    role="user",
-                    parts=[
-                        genai.types.Part.from_text(prompt),
-                        genai.types.Part.from_bytes(
-                            data=image_bytes,
-                            mime_type="image/jpeg"
-                        )
-                    ]
-                )
-            ]
+            contents=[prompt, image]
         )
 
         print("🔥 AI CALLED")
