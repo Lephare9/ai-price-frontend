@@ -6,11 +6,10 @@ import os
 import re
 import json
 
-print("🔥 APP STARTED")
+print("🔥 VERSION 2 LOADED 🔥")
 
 app = FastAPI()
 
-# 🌐 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,27 +18,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔑 API key
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
-# ---------- AI ----------
 def analyze_image_with_ai(image_bytes):
     print("🔥 FUNCTION STARTED")
 
     try:
-        prompt = """Returnér KUN gyldig JSON:
-{"name":"kort navn","price":123}
-"""
+        prompt = "Returnér JSON: {\"name\":\"...\",\"price\":123}"
 
         print("🔥 CALLING AI...")
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-1.5-flash-latest",
             contents=types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(text=prompt),
+                    types.Part.from_text(prompt),
                     types.Part.from_bytes(
                         data=image_bytes,
                         mime_type="image/jpeg"
@@ -60,41 +55,26 @@ def analyze_image_with_ai(image_bytes):
         return '{"name":"ukendt","price":0}'
 
 
-# ---------- JSON ----------
 def extract_json(text):
     try:
-        print("🔥 PARSER INPUT:", text)
-
-        text = text.replace("```json", "").replace("```", "")
-
         match = re.search(r"\{.*?\}", text, re.DOTALL)
         if match:
-            data = json.loads(match.group())
-
-            if isinstance(data.get("price"), str):
-                data["price"] = int(re.sub(r"\D", "", data["price"]) or 0)
-
-            print("🔥 PARSED JSON:", data)
-            return data
-
-    except Exception as e:
-        print("🔥 JSON FEJL:", str(e))
-
+            return json.loads(match.group())
+    except:
+        pass
     return {"name": "ukendt", "price": 0}
 
 
-# ---------- API ----------
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     print("🔥 ENDPOINT HIT")
 
     image_bytes = await file.read()
-    print("🔥 FILE RECEIVED:", len(image_bytes), "bytes")
 
     ai_response = analyze_image_with_ai(image_bytes)
     data = extract_json(ai_response)
 
-    print("🔥 FINAL OUTPUT:", data)
+    print("🔥 FINAL:", data)
 
     return {
         "description": data.get("name", "ukendt"),
@@ -102,7 +82,6 @@ async def analyze(file: UploadFile = File(...)):
     }
 
 
-# ---------- TEST ----------
 @app.get("/")
 def root():
     return {"status": "ok"}
