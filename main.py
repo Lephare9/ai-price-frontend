@@ -1,8 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
-from PIL import Image
-import io
+from google.genai import types
 import os
 import re
 import json
@@ -29,19 +28,24 @@ def analyze_image_with_ai(image_bytes):
     print("🔥 FUNCTION STARTED")
 
     try:
-        prompt = """
-Returnér KUN gyldig JSON.
+        prompt = """Returnér KUN gyldig JSON:
 {"name":"kort navn","price":123}
 """
-
-        # Convert bytes → image
-        image = Image.open(io.BytesIO(image_bytes))
 
         print("🔥 CALLING AI...")
 
         response = client.models.generate_content(
             model="gemini-1.5-flash",
-            contents=[prompt, image]
+            contents=types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=prompt),
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type="image/jpeg"
+                    )
+                ]
+            )
         )
 
         print("🔥 AI CALLED")
