@@ -1,61 +1,110 @@
-import base64
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from google import genai
+import os
+import re
+import json
 
+print("🔥 APP STARTED")
+
+app = FastAPI()
+
+# 🌐 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 🔑 API key
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+
+# ---------- AI ----------
 def analyze_image_with_ai(image_bytes):
-    prompt = """
-Analyser billedet.
+    print("🔥 FUNCTION STARTED")
 
-Du må KUN vurdere pris ud fra IDENTISKE eller næsten identiske produkter i Danmark.
-
-Svar KUN i JSON:
-{
-  "name": "1-3 ord produktnavn",
-  "price": tal
-}
+    try:
+        prompt = """
+Returnér KUN gyldig JSON.
+{"name":"kort navn","price":123}
 """
 
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        print("🔥 CALLING AI...")
 
-    response = client.models.generate_content(
-        model="gemini-1.5-flash",
-        contents=[
-            prompt,
-            {
-                "mime_type": "image/jpeg",
-                "data": image_base64
-            }
-        ]
-    )
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[
+                genai.types.Content(
+                    role="user",
+                    parts=[
+                        genai.types.Part.from_text(prompt),
+                        genai.types.Part.from_bytes(
+                            data=image_bytes,
+                            mime_type="image/jpeg"
+                        )
+                    ]
+                )
+            ]
+        )
 
-    return response.text
---------- JSON PARSER ----------
+        print("🔥 AI CALLED")
+
+        text = response.text
+        print("🔥 AI RAW:", text)
+
+        return text if text else '{"name":"ukendt","price":0}'
+
+    except Exception as e:
+        print("🔥 AI FEJL:", str(e))
+        return '{"name":"ukendt","price":0}'
+
+
+# ---------- JSON ----------
 def extract_json(text):
     try:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
+        print("🔥 PARSER INPUT:", text)
+
+        text = text.replace("```json", "").replace("```", "")
+
+        match = re.search(r"\{.*?\}", text, re.DOTALL)
         if match:
-            return eval(match.group())
-    except:
-        pass
+            data = json.loads(match.group())
+
+            if isinstance(data.get("price"), str):
+                data["price"] = int(re.sub(r"\D", "", data["price"]) or 0)
+
+            print("🔥 PARSED JSON:", data)
+            return data
+
+    except Exception as e:
+        print("🔥 JSON FEJL:", str(e))
+
     return {"name": "ukendt", "price": 0}
 
 
-# ---------- API ENDPOINT ----------
+# ---------- API ----------
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
+    print("🔥 ENDPOINT HIT")
+
     image_bytes = await file.read()
+    print("🔥 FILE RECEIVED:", len(image_bytes), "bytes")
 
-    try:
-        ai_response = analyze_image_with_ai(image_bytes)
-        data = extract_json(ai_response)
+    ai_response = analyze_image_with_ai(image_bytes)
+    data = extract_json(ai_response)
 
-        return {
-            "description": data.get("name", "ukendt"),
-            "price": data.get("price", 0)
-        }
+    print("🔥 FINAL OUTPUT:", data)
 
-    except Exception as e:
-        print("FEJL:", e)
+    return {
+        "description": data.get("name", "ukendt"),
+        "price": data.get("price", 0)
+    }
 
-        return {
-            "description": "ukendt",
-            "price": 0
-        }
+
+# ---------- TEST ----------
+@app.get("/")
+def root():
+    return {"status": "ok"}
