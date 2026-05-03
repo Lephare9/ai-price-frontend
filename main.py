@@ -1,4 +1,4 @@
-print("🔥 GEMINI ONLY AGENT 🔥")
+print("🔥 GEMINI FINAL STABLE AGENT 🔥")
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,11 +6,7 @@ import os
 import re
 import json
 import base64
-import google.generativeai as genai
-
-# 🔑 Gemini setup
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+import requests
 
 app = FastAPI()
 
@@ -23,46 +19,60 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 # ---------- AI ----------
 def analyze_image(image_bytes):
     try:
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        base64_image = base64.b64encode(image_bytes).decode("utf-8")
 
-        prompt = """
-        Analyze this item from an image.
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}"
 
-        Return ONLY valid JSON:
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": """
+Return ONLY valid JSON.
 
-        {
-          "name": "product name",
-          "price_min": number,
-          "price_max": number,
-          "hits_total": number,
-          "hits_exact": number,
-          "hits_similar": number,
-          "confidence": number (0-100)
+{
+  "name": "product name",
+  "price_min": number,
+  "price_max": number,
+  "hits_total": number,
+  "hits_exact": number,
+  "hits_similar": number,
+  "confidence": number
+}
+
+Rules:
+- Used prices in Denmark (DKK)
+- Always include all fields
+"""
+                        },
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }
+            ]
         }
 
-        Rules:
-        - Estimate realistic USED market prices in Denmark (DKK)
-        - hits = how many listings you would expect to find
-        - exact = same model
-        - similar = close alternatives
-        """
+        res = requests.post(url, json=payload)
+        data = res.json()
 
-        response = model.generate_content([
-            prompt,
-            {
-                "mime_type": "image/jpeg",
-                "data": image_base64
-            }
-        ])
+        print("🔥 RAW API RESPONSE:", data)
 
-        return response.text
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return text
 
     except Exception as e:
         print("🔥 GEMINI ERROR:", str(e))
-        return '{"name":"ukendt"}'
+        return ""
 
 
 # ---------- JSON ----------
@@ -70,10 +80,14 @@ def extract_json(text):
     try:
         text = text.replace("```json", "").replace("```", "").strip()
         match = re.search(r"\{.*\}", text, re.DOTALL)
+
         if match:
-            return json.loads(match.group())
+            parsed = json.loads(match.group())
+            print("🔥 PARSED JSON:", parsed)
+            return parsed
+
     except Exception as e:
-        print("🔥 JSON FEJL:", str(e))
+        print("🔥 JSON ERROR:", str(e))
 
     return {
         "name": "ukendt",
@@ -89,12 +103,15 @@ def extract_json(text):
 # ---------- API ----------
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
+    print("🔥 ENDPOINT HIT")
+
     image_bytes = await file.read()
+    print("🔥 IMAGE SIZE:", len(image_bytes))
 
     ai_response = analyze_image(image_bytes)
     data = extract_json(ai_response)
 
-    return {
+    result = {
         "description": data.get("name", "ukendt"),
         "price_range": f"{data.get('price_min',0)} - {data.get('price_max',0)} kr",
         "hits_total": data.get("hits_total", 0),
@@ -102,6 +119,10 @@ async def analyze(file: UploadFile = File(...)):
         "hits_similar": data.get("hits_similar", 0),
         "confidence": data.get("confidence", 0)
     }
+
+    print("🔥 FINAL RESPONSE:", result)
+
+    return result
 
 
 @app.get("/")
