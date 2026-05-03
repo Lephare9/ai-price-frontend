@@ -1,143 +1,144 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Pris Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Pris Scanner</title>
 
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #f5f5f7;
-      margin: 0;
-      padding: 20px;
-      text-align: center;
-    }
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f2f2f7;
+  margin: 0;
+  padding: 20px;
+}
 
-    h1 {
-      font-size: 22px;
-      margin-bottom: 20px;
-    }
+.container {
+  max-width: 500px;
+  margin: auto;
+}
 
-    .upload-box {
-      background: white;
-      padding: 20px;
-      border-radius: 16px;
-      box-shadow: 0 5px 20px rgba(0,0,0,0.08);
-    }
+h1 {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 30px;
+}
 
-    input {
-      margin-top: 10px;
-    }
+.scan-btn {
+  width: 100%;
+  padding: 18px;
+  font-size: 18px;
+  border-radius: 14px;
+  border: none;
+  background: black;
+  color: white;
+  font-weight: bold;
+}
 
-    button {
-      background: black;
-      color: white;
-      padding: 14px;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      margin-top: 15px;
-      width: 100%;
-    }
+.card {
+  background: white;
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 16px;
+}
 
-    button:disabled {
-      background: #999;
-    }
+img {
+  width: 100%;
+  border-radius: 12px;
+}
 
-    .card {
-      background: white;
-      padding: 16px;
-      border-radius: 16px;
-      box-shadow: 0 5px 20px rgba(0,0,0,0.08);
-      margin-top: 20px;
-      text-align: left;
-    }
+.name {
+  font-size: 18px;
+  margin-top: 10px;
+}
 
-    img {
-      width: 100%;
-      border-radius: 12px;
-      margin-bottom: 10px;
-    }
+.price {
+  font-size: 30px;
+  font-weight: bold;
+  margin-top: 5px;
+}
 
-    .name {
-      font-size: 18px;
-      color: #444;
-    }
+.reason {
+  font-size: 14px;
+  color: #666;
+  margin-top: 10px;
+}
 
-    .price {
-      font-size: 32px;
-      font-weight: bold;
-      margin: 8px 0;
-    }
-
-    .reason {
-      font-size: 14px;
-      color: #777;
-    }
-
-    .loader {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #555;
-    }
-  </style>
+#status {
+  text-align: center;
+  margin-top: 15px;
+}
+</style>
 </head>
 
 <body>
 
-  <h1>📸 AI Pris Scanner</h1>
+<div class="container">
 
-  <div class="upload-box">
-    <input type="file" id="file" accept="image/*"><br>
-    <button id="btn" onclick="upload()">Scan genstand</button>
-    <div id="status" class="loader"></div>
-  </div>
+<h1>📸 AI Pris Scanner</h1>
 
-  <div id="result"></div>
+<input type="file" id="file" accept="image/*" capture="environment" style="display:none"/>
 
-  <script>
-    async function upload() {
-      const fileInput = document.getElementById("file");
-      const file = fileInput.files[0];
-      const btn = document.getElementById("btn");
+<button class="scan-btn" onclick="openCamera()">📸 Scan genstand</button>
 
-      if (!file) {
-        alert("Vælg et billede først");
-        return;
-      }
+<div id="status"></div>
+<div id="result"></div>
 
-      const formData = new FormData();
-      formData.append("file", file);
+</div>
 
-      const imageURL = URL.createObjectURL(file);
+<script>
+const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
-      btn.disabled = true;
-      document.getElementById("status").innerText = "⏳ Analyserer billede...";
+function openCamera() {
+  document.getElementById("file").click();
+}
 
-      try {
-        const res = await fetch("https://ai-pricing-agent.onrender.com/analyze", {
-          method: "POST",
-          body: formData
-        });
+document.getElementById("file").addEventListener("change", async function () {
+  const file = this.files[0];
+  if (!file) return;
 
-        const data = await res.json();
+  const formData = new FormData();
+  formData.append("file", file);
 
-        document.getElementById("result").innerHTML = `
-          <div class="card">
-            <img src="${imageURL}" />
-            <div class="name">${data.description}</div>
-            <div class="price">${data.price} kr</div>
-            <div class="reason">${data.reason || ""}</div>
-          </div>
-        `;
-      } catch (err) {
-        document.getElementById("status").innerText = "❌ Der opstod en fejl";
-      }
+  const imageURL = URL.createObjectURL(file);
 
-      document.getElementById("status").innerText = "";
-      btn.disabled = false;
-    }
-  </script>
+  document.getElementById("status").innerText = "⏳ Analyserer...";
+
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+
+    document.getElementById("status").innerText = "";
+
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <img src="${imageURL}" />
+
+        <div class="name">
+          ${data.description || "ukendt"}
+        </div>
+
+        <div class="price">
+          ${data.price_range || "0 - 0 kr"}
+        </div>
+
+        <div class="reason">
+          🔎 ${data.hits_total ?? 0} fundet<br/>
+          ✅ ${data.hits_exact ?? 0} identiske<br/>
+          🔄 ${data.hits_similar ?? 0} lignende<br/>
+          📊 Confidence: ${data.confidence ?? 0}%
+        </div>
+      </div>
+    `;
+
+  } catch (err) {
+    document.getElementById("status").innerText = "❌ Fejl – prøv igen";
+  }
+});
+</script>
 
 </body>
 </html>
