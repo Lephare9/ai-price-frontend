@@ -34,8 +34,9 @@ h1 {
   font-weight: bold;
 }
 
-.scan-btn:active {
-  transform: scale(0.98);
+.secondary {
+  background: #444;
+  margin-top: 10px;
 }
 
 .card {
@@ -84,17 +85,11 @@ img {
 
 <h1>📸 AI Pris Scanner</h1>
 
-<input 
-  type="file" 
-  id="file" 
-  accept="image/*" 
-  capture="environment"
-  style="display:none"
-/>
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galleryInput" accept="image/*" style="display:none">
 
-<button class="scan-btn" onclick="openCamera()">
-  📸 Scan genstand
-</button>
+<button class="scan-btn" onclick="openCamera()">📸 Tag billede</button>
+<button class="scan-btn secondary" onclick="openGallery()">🖼️ Vælg fra arkiv</button>
 
 <div id="status"></div>
 <div id="result"></div>
@@ -102,24 +97,27 @@ img {
 </div>
 
 <script>
-console.log("🔥 UI V1 LOADED");
-
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
 function openCamera() {
-  document.getElementById("file").click();
+  document.getElementById("cameraInput").click();
 }
 
-document.getElementById("file").addEventListener("change", async function () {
+function openGallery() {
+  document.getElementById("galleryInput").click();
+}
 
-  const file = this.files[0];
+document.getElementById("cameraInput").addEventListener("change", handleFile);
+document.getElementById("galleryInput").addEventListener("change", handleFile);
+
+async function handleFile(e) {
+  const file = e.target.files[0];
   if (!file) return;
 
   const reader = new FileReader();
 
-  reader.onload = async function(e) {
-
-    const imageURL = e.target.result;
+  reader.onload = async function(event) {
+    const imageURL = event.target.result;
 
     document.getElementById("status").innerText = "Analyserer...";
 
@@ -133,8 +131,6 @@ document.getElementById("file").addEventListener("change", async function () {
       });
 
       const data = await res.json();
-
-      console.log("🔥 DATA:", data);
 
       document.getElementById("status").innerText = "";
 
@@ -156,7 +152,7 @@ document.getElementById("file").addEventListener("change", async function () {
   };
 
   reader.readAsDataURL(file);
-});
+}
 </script>
 
 </body>
