@@ -3,24 +3,6 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Pris Scanner</title>
-
-<style>
-body {
-  font-family: Arial, sans-serif;
-  padding: 20px;
-}
-
-img {
-  width: 100%;
-  margin-top: 10px;
-}
-
-.card {
-  margin-top: 20px;
-  padding: 10px;
-  border: 1px solid #ddd;
-}
-</style>
 </head>
 
 <body>
@@ -33,7 +15,7 @@ img {
 <div id="result"></div>
 
 <script>
-console.log("🔥 FRONTEND V2 LOADED");
+console.log("🔥 SCRIPT LOADED");
 
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
@@ -45,8 +27,6 @@ document.getElementById("file").addEventListener("change", async function () {
   const formData = new FormData();
   formData.append("file", file);
 
-  const imageURL = URL.createObjectURL(file);
-
   document.getElementById("status").innerText = "Analyserer...";
 
   try {
@@ -57,19 +37,13 @@ document.getElementById("file").addEventListener("change", async function () {
 
     const data = await res.json();
 
-    console.log("🔥 API DATA:", data);
+    console.log("🔥 DATA:", data);
 
     document.getElementById("status").innerText = "";
 
-    document.getElementById("result").innerHTML = `
-      <div class="card">
-        <img src="${imageURL}">
-        <h3>${data.description}</h3>
-        <h2>${data.price_range}</h2>
-        <p>Hits: ${data.hits_total}</p>
-        <p>Confidence: ${data.confidence}%</p>
-      </div>
-    `;
+    document.getElementById("result").innerHTML =
+      "<h2>" + data.description + "</h2>" +
+      "<h1>" + data.price_range + "</h1>";
 
   } catch (err) {
     console.error(err);
