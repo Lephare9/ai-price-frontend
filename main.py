@@ -1,4 +1,4 @@
-print("🔥 HTTP VERSION ACTIVE 🔥")
+print("🔥 GEMINI ONLY AGENT 🔥")
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +6,11 @@ import os
 import re
 import json
 import base64
-import requests
+import google.generativeai as genai
+
+# 🔑 Gemini setup
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 app = FastAPI()
 
@@ -20,99 +24,86 @@ app.add_middleware(
 )
 
 # ---------- AI ----------
-def analyze_image_with_ai(image_bytes):
-    print("🔥 FUNCTION STARTED")
-
+def analyze_image(image_bytes):
     try:
-        prompt = """Returnér KUN JSON:
-{"name":"kort navn","price":123}
-"""
-
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        print("🔥 CALLING AI (HTTP)...")
+        prompt = """
+        Analyze this item from an image.
 
-        response = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-vision:generateContent",
-            headers={"Content-Type": "application/json"},
-            params={"key": os.getenv("GEMINI_API_KEY")},
-            json={
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt},
-                            {
-                                "inline_data": {
-                                    "mime_type": "image/jpeg",
-                                    "data": image_base64
-                                }
-                            }
-                        ]
-                    }
-                ]
+        Return ONLY valid JSON:
+
+        {
+          "name": "product name",
+          "price_min": number,
+          "price_max": number,
+          "hits_total": number,
+          "hits_exact": number,
+          "hits_similar": number,
+          "confidence": number (0-100)
+        }
+
+        Rules:
+        - Estimate realistic USED market prices in Denmark (DKK)
+        - hits = how many listings you would expect to find
+        - exact = same model
+        - similar = close alternatives
+        """
+
+        response = model.generate_content([
+            prompt,
+            {
+                "mime_type": "image/jpeg",
+                "data": image_base64
             }
-        )
+        ])
 
-        data = response.json()
-        print("🔥 RAW RESPONSE:", data)
-
-        text = data.get("candidates", [{}])[0] \
-                  .get("content", {}) \
-                  .get("parts", [{}])[0] \
-                  .get("text", "")
-
-        print("🔥 AI RAW:", text)
-
-        return text if text else '{"name":"ukendt","price":0}'
+        return response.text
 
     except Exception as e:
-        print("🔥 AI FEJL:", str(e))
-        return '{"name":"ukendt","price":0}'
+        print("🔥 GEMINI ERROR:", str(e))
+        return '{"name":"ukendt"}'
 
 
 # ---------- JSON ----------
 def extract_json(text):
     try:
-        print("🔥 PARSER INPUT:", text)
-
-        text = text.replace("```json", "").replace("```", "")
-
-        match = re.search(r"\{.*?\}", text, re.DOTALL)
+        text = text.replace("```json", "").replace("```", "").strip()
+        match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
-            data = json.loads(match.group())
-
-            if isinstance(data.get("price"), str):
-                data["price"] = int(re.sub(r"\D", "", data["price"]) or 0)
-
-            print("🔥 PARSED JSON:", data)
-            return data
-
+            return json.loads(match.group())
     except Exception as e:
         print("🔥 JSON FEJL:", str(e))
 
-    return {"name": "ukendt", "price": 0}
+    return {
+        "name": "ukendt",
+        "price_min": 0,
+        "price_max": 0,
+        "hits_total": 0,
+        "hits_exact": 0,
+        "hits_similar": 0,
+        "confidence": 0
+    }
 
 
 # ---------- API ----------
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
-    print("🔥 ENDPOINT HIT")
-
     image_bytes = await file.read()
-    print("🔥 FILE RECEIVED:", len(image_bytes), "bytes")
 
-    ai_response = analyze_image_with_ai(image_bytes)
+    ai_response = analyze_image(image_bytes)
     data = extract_json(ai_response)
-
-    print("🔥 FINAL OUTPUT:", data)
 
     return {
         "description": data.get("name", "ukendt"),
-        "price": data.get("price", 0)
+        "price_range": f"{data.get('price_min',0)} - {data.get('price_max',0)} kr",
+        "hits_total": data.get("hits_total", 0),
+        "hits_exact": data.get("hits_exact", 0),
+        "hits_similar": data.get("hits_similar", 0),
+        "confidence": data.get("confidence", 0)
     }
 
 
-# ---------- TEST ----------
 @app.get("/")
 def root():
     return {"status": "ok"}
