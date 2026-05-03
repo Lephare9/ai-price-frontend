@@ -112,35 +112,48 @@ document.getElementById("file").addEventListener("change", async function () {
 
     const data = await res.json();
 
-    // 🔍 DEBUG (kan fjernes senere)
-    console.log("API RESPONSE:", data);
+    console.log("DATA:", data);
 
-    // 🔒 FAILSAFE værdier
-    const name = data.description || "ukendt";
-    const price = data.price_range || "0 - 0 kr";
-    const hits = data.hits_total ?? 0;
-    const exact = data.hits_exact ?? 0;
-    const similar = data.hits_similar ?? 0;
-    const confidence = data.confidence ?? 0;
+    // Failsafe værdier
+    const name = data.description ? data.description : "ukendt";
+    const price = data.price_range ? data.price_range : "0 - 0 kr";
+    const hits = data.hits_total ? data.hits_total : 0;
+    const exact = data.hits_exact ? data.hits_exact : 0;
+    const similar = data.hits_similar ? data.hits_similar : 0;
+    const confidence = data.confidence ? data.confidence : 0;
 
     document.getElementById("status").innerText = "";
 
-    document.getElementById("result").innerHTML = `
-      <div class="card">
-        <img src="${imageURL}" />
+    const resultDiv = document.getElementById("result");
 
-        <div class="name">${name}</div>
+    const card = document.createElement("div");
+    card.className = "card";
 
-        <div class="price">${data.price_range}</div>
+    const img = document.createElement("img");
+    img.src = imageURL;
 
-        <div class="reason">
-          🔎 ${hits} fundet<br/>
-          ✅ ${exact} identiske<br/>
-          🔄 ${similar} lignende<br/>
-          📊 Confidence: ${confidence}%
-        </div>
-      </div>
-    `;
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "name";
+    nameDiv.innerText = name;
+
+    const priceDiv = document.createElement("div");
+    priceDiv.className = "price";
+    priceDiv.innerText = price;
+
+    const reasonDiv = document.createElement("div");
+    reasonDiv.className = "reason";
+    reasonDiv.innerHTML =
+      "🔎 " + hits + " fundet<br>" +
+      "✅ " + exact + " identiske<br>" +
+      "🔄 " + similar + " lignende<br>" +
+      "📊 Confidence: " + confidence + "%";
+
+    card.appendChild(img);
+    card.appendChild(nameDiv);
+    card.appendChild(priceDiv);
+    card.appendChild(reasonDiv);
+
+    resultDiv.appendChild(card);
 
   } catch (err) {
     console.error(err);
