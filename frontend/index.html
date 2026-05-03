@@ -3,53 +3,159 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Pris Scanner</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f2f2f7;
+  margin: 0;
+  padding: 20px;
+}
+
+.container {
+  max-width: 500px;
+  margin: auto;
+}
+
+h1 {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 30px;
+}
+
+.scan-btn {
+  width: 100%;
+  padding: 18px;
+  font-size: 18px;
+  border-radius: 14px;
+  border: none;
+  background: black;
+  color: white;
+  font-weight: bold;
+}
+
+.scan-btn:active {
+  transform: scale(0.98);
+}
+
+.card {
+  background: white;
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+}
+
+img {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.name {
+  font-size: 18px;
+  margin-top: 10px;
+  color: #444;
+}
+
+.price {
+  font-size: 34px;
+  font-weight: bold;
+  margin-top: 6px;
+}
+
+.meta {
+  font-size: 13px;
+  color: #777;
+  margin-top: 8px;
+}
+
+#status {
+  text-align: center;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #666;
+}
+</style>
 </head>
 
 <body>
 
+<div class="container">
+
 <h1>📸 AI Pris Scanner</h1>
 
-<input type="file" id="file" accept="image/*">
+<input 
+  type="file" 
+  id="file" 
+  accept="image/*" 
+  capture="environment"
+  style="display:none"
+/>
+
+<button class="scan-btn" onclick="openCamera()">
+  📸 Scan genstand
+</button>
 
 <div id="status"></div>
 <div id="result"></div>
 
+</div>
+
 <script>
-console.log("🔥 SCRIPT LOADED");
+console.log("🔥 UI V1 LOADED");
 
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
+
+function openCamera() {
+  document.getElementById("file").click();
+}
 
 document.getElementById("file").addEventListener("change", async function () {
 
   const file = this.files[0];
   if (!file) return;
 
-  const formData = new FormData();
-  formData.append("file", file);
+  const reader = new FileReader();
 
-  document.getElementById("status").innerText = "Analyserer...";
+  reader.onload = async function(e) {
 
-  try {
-    const res = await fetch(API_URL, {
-      method: "POST",
-      body: formData
-    });
+    const imageURL = e.target.result;
 
-    const data = await res.json();
+    document.getElementById("status").innerText = "Analyserer...";
 
-    console.log("🔥 DATA:", data);
+    const formData = new FormData();
+    formData.append("file", file);
 
-    document.getElementById("status").innerText = "";
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        body: formData
+      });
 
-    document.getElementById("result").innerHTML =
-      "<h2>" + data.description + "</h2>" +
-      "<h1>" + data.price_range + "</h1>";
+      const data = await res.json();
 
-  } catch (err) {
-    console.error(err);
-    document.getElementById("status").innerText = "Fejl";
-  }
+      console.log("🔥 DATA:", data);
 
+      document.getElementById("status").innerText = "";
+
+      document.getElementById("result").innerHTML = `
+        <div class="card">
+          <img src="${imageURL}" />
+          <div class="name">${data.description}</div>
+          <div class="price">${data.price_range}</div>
+          <div class="meta">
+            ${data.hits_total} fund • ${data.confidence}% sikkerhed
+          </div>
+        </div>
+      `;
+
+    } catch (err) {
+      console.error(err);
+      document.getElementById("status").innerText = "❌ Fejl – prøv igen";
+    }
+  };
+
+  reader.readAsDataURL(file);
 });
 </script>
 
