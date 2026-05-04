@@ -19,55 +19,44 @@ body {
 
 h1 {
   text-align: center;
-  font-size: 22px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .btn {
   width: 100%;
-  padding: 18px;
-  font-size: 18px;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 12px;
   border: none;
   background: black;
   color: white;
-  font-weight: bold;
+  margin-bottom: 10px;
+  font-size: 16px;
 }
 
 .btn.secondary {
   background: #444;
-  margin-top: 10px;
 }
 
 .card {
   background: white;
   margin-top: 20px;
-  padding: 16px;
-  border-radius: 16px;
+  padding: 15px;
+  border-radius: 12px;
 }
 
 img {
   width: 100%;
-  border-radius: 12px;
-}
-
-.name {
-  margin-top: 10px;
+  border-radius: 10px;
 }
 
 .price {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: bold;
 }
 
 .meta {
-  font-size: 12px;
   color: #666;
-}
-
-#status {
-  text-align: center;
-  margin-top: 10px;
+  font-size: 12px;
 }
 </style>
 </head>
@@ -82,9 +71,8 @@ img {
 <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
 <button class="btn" onclick="openCamera()">📷 Tag billede</button>
-<button class="btn secondary" onclick="openGallery()">🗂️ Vælg fra arkiv</button>
+<button class="btn secondary" onclick="openGallery()">🗂️ Arkiv</button>
 
-<div id="status"></div>
 <div id="result"></div>
 
 </div>
@@ -106,7 +94,7 @@ document.getElementById("galleryInput").addEventListener("change", handleFile);
 
 // ---------- RESIZE ----------
 function resizeImage(file) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const img = new Image();
     const reader = new FileReader();
 
@@ -137,47 +125,38 @@ async function handleFile(e) {
   const file = e.target.files[0];
   if (!file) return;
 
-  const previewURL = URL.createObjectURL(file);
+  const preview = URL.createObjectURL(file);
 
-  // 🔥 VIS BILLEDE MED DET SAMME
+  // vis med det samme
   document.getElementById("result").innerHTML = `
     <div class="card">
-      <img src="${previewURL}" />
-      <div class="name">Analyserer...</div>
+      <img src="${preview}" />
+      <p>Analyserer...</p>
     </div>
   `;
 
-  document.getElementById("status").innerText = "";
-
-  // resize i baggrunden
   const resized = await resizeImage(file);
 
   const formData = new FormData();
   formData.append("file", resized, "image.jpg");
 
-  try {
-    const res = await fetch(API_URL, {
-      method: "POST",
-      body: formData
-    });
+  const res = await fetch(API_URL, {
+    method: "POST",
+    body: formData
+  });
 
-    const data = await res.json();
+  const data = await res.json();
 
-    // 🔥 OPDATER RESULTAT
-    document.getElementById("result").innerHTML = `
-      <div class="card">
-        <img src="${previewURL}" />
-        <div class="name">${data.description}</div>
-        <div class="price">${data.price_range}</div>
-        <div class="meta">
-          ${data.hits_total} fund • ${data.confidence}% sikkerhed
-        </div>
+  document.getElementById("result").innerHTML = `
+    <div class="card">
+      <img src="${preview}" />
+      <h3>${data.description}</h3>
+      <div class="price">${data.price_range}</div>
+      <div class="meta">
+        ${data.hits_total} fund • ${data.confidence}% sikkerhed
       </div>
-    `;
-
-  } catch (err) {
-    document.getElementById("status").innerText = "Fejl";
-  }
+    </div>
+  `;
 }
 </script>
 
