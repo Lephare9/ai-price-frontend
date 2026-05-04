@@ -33,8 +33,8 @@ h1 {
   color: white;
   font-weight: bold;
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   gap: 10px;
 }
 
@@ -105,6 +105,7 @@ img {
 <script>
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
+// ---------- OPEN ----------
 function openCamera() {
   document.getElementById("cameraInput").click();
 }
@@ -113,50 +114,80 @@ function openGallery() {
   document.getElementById("galleryInput").click();
 }
 
+// ---------- LISTENERS ----------
 document.getElementById("cameraInput").addEventListener("change", handleFile);
 document.getElementById("galleryInput").addEventListener("change", handleFile);
 
+// ---------- RESIZE IMAGE ----------
+function resizeImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+      img.src = e.target.result;
+    };
+
+    img.onload = function() {
+      const MAX_WIDTH = 1024;
+
+      const scale = MAX_WIDTH / img.width;
+      const canvas = document.createElement("canvas");
+
+      canvas.width = MAX_WIDTH;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+        resolve(blob);
+      }, "image/jpeg", 0.7); // 🔥 compression
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---------- MAIN ----------
 async function handleFile(e) {
   const file = e.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
+  document.getElementById("status").innerText = "Analyserer...";
 
-  reader.onload = async function(event) {
-    const imageURL = event.target.result;
+  // 🔥 Resize først
+  const resizedBlob = await resizeImage(file);
 
-    document.getElementById("status").innerText = "Analyserer...";
+  const imageURL = URL.createObjectURL(resizedBlob);
 
-    const formData = new FormData();
-    formData.append("file", file);
+  const formData = new FormData();
+  formData.append("file", resizedBlob, "image.jpg");
 
-    try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        body: formData
-      });
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: formData
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      document.getElementById("status").innerText = "";
+    document.getElementById("status").innerText = "";
 
-      document.getElementById("result").innerHTML = `
-        <div class="card">
-          <img src="${imageURL}" />
-          <div class="name">${data.description}</div>
-          <div class="price">${data.price_range}</div>
-          <div class="meta">
-            ${data.hits_total} fund • ${data.confidence}% sikkerhed
-          </div>
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <img src="${imageURL}" />
+        <div class="name">${data.description}</div>
+        <div class="price">${data.price_range}</div>
+        <div class="meta">
+          ${data.hits_total} fund • ${data.confidence}% sikkerhed
         </div>
-      `;
+      </div>
+    `;
 
-    } catch (err) {
-      document.getElementById("status").innerText = "Fejl";
-    }
-  };
-
-  reader.readAsDataURL(file);
+  } catch (err) {
+    document.getElementById("status").innerText = "Fejl – prøv igen";
+  }
 }
 </script>
 
