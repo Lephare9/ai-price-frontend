@@ -17,15 +17,18 @@ body {
   margin: auto;
 }
 
-.btn {
+h1 {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+
+input {
   width: 100%;
-  padding: 18px;
-  font-size: 18px;
-  border-radius: 14px;
-  border: none;
-  background: black;
-  color: white;
-  margin-top: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  margin-bottom: 10px;
 }
 
 .card {
@@ -33,6 +36,7 @@ body {
   margin-top: 20px;
   padding: 16px;
   border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
 }
 
 img {
@@ -40,16 +44,28 @@ img {
   border-radius: 12px;
 }
 
+.name {
+  font-size: 18px;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
 .price {
   font-size: 32px;
   font-weight: bold;
+  margin-top: 6px;
 }
 
 .meta {
   font-size: 13px;
   color: #777;
+  margin-top: 8px;
 }
 
+#status {
+  text-align: center;
+  margin-top: 10px;
+}
 </style>
 </head>
 
@@ -61,6 +77,7 @@ img {
 
 <input type="file" id="file" accept="image/*" capture="environment">
 
+<div id="status"></div>
 <div id="result"></div>
 
 </div>
@@ -75,6 +92,7 @@ document.getElementById("file").addEventListener("change", async function () {
 
   const preview = URL.createObjectURL(file);
 
+  // 🔥 vis billede med det samme
   document.getElementById("result").innerHTML = `
     <div class="card">
       <img src="${preview}">
@@ -85,32 +103,44 @@ document.getElementById("file").addEventListener("change", async function () {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(API_URL, {
-    method: "POST",
-    body: formData
-  });
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: formData
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  document.getElementById("result").innerHTML = `
-    <div class="card">
-      <img src="${preview}">
-      <h3>${data.description}</h3>
-      <div class="price">${data.price_range}</div>
+    // 🔥 fallback hvis AI fejler
+    if (!data.price_range || data.price_range === "-") {
+      document.getElementById("result").innerHTML = `
+        <div class="card">
+          <img src="${preview}">
+          <p>⚠️ AI er travl – prøv igen</p>
+        </div>
+      `;
+      return;
+    }
 
-      <div class="meta">
-        Brand: ${data.brand || "ukendt"} <br>
-        Design score: ${data.design_score} <br>
-        Confidence: ${data.confidence}%
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <img src="${preview}">
+        <div class="name">${data.description}</div>
+        <div class="price">${data.price_range}</div>
+        <div class="meta">
+          Sikkerhed: ${data.confidence}%
+        </div>
       </div>
+    `;
 
-      <hr>
-
-      <div class="meta">
-        🔎 ${data.search_query_dk}
+  } catch (err) {
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <img src="${preview}">
+        <p>⚠️ Fejl – prøv igen</p>
       </div>
-    </div>
-  `;
+    `;
+  }
 
 });
 </script>
