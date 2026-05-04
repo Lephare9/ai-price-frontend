@@ -18,15 +18,30 @@
       margin-bottom: 20px;
     }
 
+    .upload-box {
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    }
+
+    input {
+      margin-top: 10px;
+    }
+
     button {
-      width: 100%;
-      padding: 14px;
-      border-radius: 12px;
-      border: none;
       background: black;
       color: white;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
       font-size: 16px;
-      margin-top: 10px;
+      margin-top: 15px;
+      width: 100%;
+    }
+
+    button:disabled {
+      background: #999;
     }
 
     .card {
@@ -44,6 +59,11 @@
       margin-bottom: 10px;
     }
 
+    .name {
+      font-size: 18px;
+      color: #444;
+    }
+
     .price {
       font-size: 32px;
       font-weight: bold;
@@ -55,8 +75,8 @@
       color: #777;
     }
 
-    #status {
-      margin-top: 10px;
+    .loader {
+      margin-top: 15px;
       font-size: 14px;
       color: #555;
     }
@@ -65,94 +85,59 @@
 
 <body>
 
-<h1>📸 AI Pris Scanner</h1>
+  <h1>📸 AI Pris Scanner</h1>
 
-<!-- skjult file input -->
-<input 
-  type="file" 
-  id="file" 
-  accept="image/*" 
-  capture="environment" 
-  style="display:none"
-/>
+  <div class="upload-box">
+    <input type="file" id="file" accept="image/*"><br>
+    <button id="btn" onclick="upload()">Scan genstand</button>
+    <div id="status" class="loader"></div>
+  </div>
 
-<button onclick="openCamera()">📸 Scan genstand</button>
+  <div id="result"></div>
 
-<div id="status"></div>
-<div id="result"></div>
+  <script>
+    async function upload() {
+      const fileInput = document.getElementById("file");
+      const file = fileInput.files[0];
+      const btn = document.getElementById("btn");
 
-<script>
-const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
+      if (!file) {
+        alert("Vælg et billede først");
+        return;
+      }
 
-// 🔁 retry + timeout
-async function fetchWithRetry(url, options, retries = 2) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+      const formData = new FormData();
+      formData.append("file", file);
 
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
+      const imageURL = URL.createObjectURL(file);
 
-    clearTimeout(timeout);
+      btn.disabled = true;
+      document.getElementById("status").innerText = "⏳ Analyserer billede...";
 
-    if (!response.ok) throw new Error("Server fejl");
+      try {
+        const res = await fetch("https://ai-pricing-agent.onrender.com/analyze", {
+          method: "POST",
+          body: formData
+        });
 
-    return await response.json();
+        const data = await res.json();
 
-  } catch (err) {
-    if (retries > 0) {
-      console.log("🔁 retry...");
-      return fetchWithRetry(url, options, retries - 1);
+        document.getElementById("result").innerHTML = `
+          <div class="card">
+            <img src="${imageURL}" />
+            <div class="name">${data.description}</div>
+            <div class="price">${data.price} kr</div>
+            <div class="reason">${data.reason || ""}</div>
+          </div>
+        `;
+      } catch (err) {
+        document.getElementById("status").innerText = "❌ Der opstod en fejl";
+      }
+
+      document.getElementById("status").innerText = "";
+      btn.disabled = false;
     }
-    throw err;
-  }
-}
-
-// 📸 åbner kamera
-function openCamera() {
-  document.getElementById("file").click();
-}
-
-// 🤖 auto upload når billede vælges
-document.getElementById("file").addEventListener("change", async function () {
-  const file = this.files[0];
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const imageURL = URL.createObjectURL(file);
-
-  document.getElementById("status").innerText =
-    "⏳ Starter AI... (kan tage 10-20 sek første gang)";
-  document.getElementById("result").innerHTML = "";
-
-  try {
-    const data = await fetchWithRetry(API_URL, {
-      method: "POST",
-      body: formData
-    });
-
-    document.getElementById("status").innerText = "";
-
-    document.getElementById("result").innerHTML = `
-      <div class="card">
-        <img src="${imageURL}" />
-        <div>${data.description}</div>
-        <div class="price">${data.price} kr</div>
-        <div class="reason">${data.reason || ""}</div>
-      </div>
-    `;
-
-  } catch (err) {
-    console.error(err);
-    document.getElementById("status").innerText =
-      "❌ Fejl – prøv igen (server starter muligvis op)";
-  }
-});
-</script>
+  </script>
 
 </body>
 </html>
