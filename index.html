@@ -32,10 +32,6 @@ h1 {
   background: black;
   color: white;
   font-weight: bold;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
 }
 
 .btn.secondary {
@@ -48,7 +44,6 @@ h1 {
   margin-top: 20px;
   padding: 16px;
   border-radius: 16px;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
 }
 
 img {
@@ -57,25 +52,22 @@ img {
 }
 
 .name {
-  font-size: 18px;
   margin-top: 10px;
 }
 
 .price {
-  font-size: 34px;
+  font-size: 30px;
   font-weight: bold;
-  margin-top: 6px;
 }
 
 .meta {
-  font-size: 13px;
-  color: #777;
-  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
 }
 
 #status {
   text-align: center;
-  margin-top: 15px;
+  margin-top: 10px;
 }
 </style>
 </head>
@@ -89,13 +81,8 @@ img {
 <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
 <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
-<button class="btn" onclick="openCamera()">
-  📷 Tag billede
-</button>
-
-<button class="btn secondary" onclick="openGallery()">
-  🗂️ Vælg fra arkiv
-</button>
+<button class="btn" onclick="openCamera()">📷 Tag billede</button>
+<button class="btn secondary" onclick="openGallery()">🗂️ Vælg fra arkiv</button>
 
 <div id="status"></div>
 <div id="result"></div>
@@ -105,7 +92,6 @@ img {
 <script>
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
-// ---------- OPEN ----------
 function openCamera() {
   document.getElementById("cameraInput").click();
 }
@@ -114,55 +100,60 @@ function openGallery() {
   document.getElementById("galleryInput").click();
 }
 
-// ---------- LISTENERS ----------
 document.getElementById("cameraInput").addEventListener("change", handleFile);
 document.getElementById("galleryInput").addEventListener("change", handleFile);
 
-// ---------- RESIZE IMAGE ----------
+
+// ---------- RESIZE ----------
 function resizeImage(file) {
   return new Promise((resolve) => {
     const img = new Image();
     const reader = new FileReader();
 
-    reader.onload = function(e) {
-      img.src = e.target.result;
-    };
+    reader.onload = e => img.src = e.target.result;
 
-    img.onload = function() {
-      const MAX_WIDTH = 1024;
-
-      const scale = MAX_WIDTH / img.width;
+    img.onload = () => {
       const canvas = document.createElement("canvas");
+      const MAX = 1024;
 
-      canvas.width = MAX_WIDTH;
+      const scale = MAX / img.width;
+
+      canvas.width = MAX;
       canvas.height = img.height * scale;
 
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      canvas.toBlob((blob) => {
-        resolve(blob);
-      }, "image/jpeg", 0.7); // 🔥 compression
+      canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.7);
     };
 
     reader.readAsDataURL(file);
   });
 }
 
+
 // ---------- MAIN ----------
 async function handleFile(e) {
   const file = e.target.files[0];
   if (!file) return;
 
-  document.getElementById("status").innerText = "Analyserer...";
+  const previewURL = URL.createObjectURL(file);
 
-  // 🔥 Resize først
-  const resizedBlob = await resizeImage(file);
+  // 🔥 VIS BILLEDE MED DET SAMME
+  document.getElementById("result").innerHTML = `
+    <div class="card">
+      <img src="${previewURL}" />
+      <div class="name">Analyserer...</div>
+    </div>
+  `;
 
-  const imageURL = URL.createObjectURL(resizedBlob);
+  document.getElementById("status").innerText = "";
+
+  // resize i baggrunden
+  const resized = await resizeImage(file);
 
   const formData = new FormData();
-  formData.append("file", resizedBlob, "image.jpg");
+  formData.append("file", resized, "image.jpg");
 
   try {
     const res = await fetch(API_URL, {
@@ -172,11 +163,10 @@ async function handleFile(e) {
 
     const data = await res.json();
 
-    document.getElementById("status").innerText = "";
-
+    // 🔥 OPDATER RESULTAT
     document.getElementById("result").innerHTML = `
       <div class="card">
-        <img src="${imageURL}" />
+        <img src="${previewURL}" />
         <div class="name">${data.description}</div>
         <div class="price">${data.price_range}</div>
         <div class="meta">
@@ -186,7 +176,7 @@ async function handleFile(e) {
     `;
 
   } catch (err) {
-    document.getElementById("status").innerText = "Fejl – prøv igen";
+    document.getElementById("status").innerText = "Fejl";
   }
 }
 </script>
