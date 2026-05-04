@@ -24,12 +24,14 @@ h1 {
   margin-bottom: 20px;
 }
 
+/* GRID */
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 
+/* BUTTON CARDS */
 .action-card {
   aspect-ratio: 1 / 1;
   border-radius: 20px;
@@ -45,6 +47,7 @@ h1 {
   transform: scale(0.96);
 }
 
+/* CAMERA */
 .camera {
   background: linear-gradient(145deg, #1a1a1a, #000);
   color: white;
@@ -58,6 +61,7 @@ h1 {
   margin-bottom: 10px;
 }
 
+/* GALLERY */
 .gallery {
   background: linear-gradient(145deg, #ffe066, #ffd43b);
 }
@@ -81,6 +85,7 @@ h1 {
   background: #ffd43b;
 }
 
+/* TEXT */
 .label {
   font-size: 15px;
   font-weight: 600;
@@ -90,11 +95,13 @@ input {
   display: none;
 }
 
+/* RESULT CARD */
 .card {
   margin-top: 20px;
   padding: 16px;
   border-radius: 20px;
-  background: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
 }
 
 img {
@@ -136,12 +143,14 @@ img {
 
 <div class="actions">
 
+  <!-- Kamera -->
   <label class="action-card camera">
     <div class="lens"></div>
     <div class="label">Tag foto</div>
     <input type="file" id="cameraInput" accept="image/*" capture="environment">
   </label>
 
+  <!-- Arkiv -->
   <label class="action-card gallery">
     <div class="folder"></div>
     <div class="label">Arkiv</div>
@@ -178,23 +187,25 @@ async function handleFile(e) {
   const formData = new FormData();
   formData.append("file", file);
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 65000);
+
   try {
     const res = await fetch(API_URL, {
       method: "POST",
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
 
     const data = await res.json();
 
     if (data.error) {
-      let msg = "Fejl – prøv igen";
+      let msg = "Server svarer langsomt – prøv igen";
 
-      if (data.error === "timeout") {
-        msg = "Forbindelse langsom – prøv igen";
-      } else if (data.error === "ai_failed") {
+      if (data.error === "ai_failed") {
         msg = "Kunne ikke genkende produkt";
-      } else if (data.error === "parse_error") {
-        msg = "Datafejl – prøv igen";
       }
 
       resultEl.innerHTML = `
@@ -219,7 +230,7 @@ async function handleFile(e) {
     resultEl.innerHTML = `
       <div class="card">
         <img src="${preview}">
-        <div class="meta">⚠️ Netværksfejl</div>
+        <div class="meta">⚠️ Server svarer langsomt – prøv igen</div>
       </div>
     `;
   }
