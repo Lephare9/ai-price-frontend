@@ -19,44 +19,39 @@ body {
 
 h1 {
   text-align: center;
-  margin-bottom: 20px;
 }
 
 .btn {
   width: 100%;
-  padding: 16px;
-  border-radius: 12px;
+  padding: 18px;
+  font-size: 18px;
+  border-radius: 14px;
   border: none;
   background: black;
   color: white;
-  margin-bottom: 10px;
-  font-size: 16px;
-}
-
-.btn.secondary {
-  background: #444;
+  margin-top: 10px;
 }
 
 .card {
   background: white;
   margin-top: 20px;
-  padding: 15px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 16px;
 }
 
 img {
   width: 100%;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .price {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: bold;
 }
 
-.meta {
-  color: #666;
-  font-size: 12px;
+#status {
+  text-align: center;
+  margin-top: 10px;
 }
 </style>
 </head>
@@ -67,12 +62,9 @@ img {
 
 <h1>AI Pris Scanner</h1>
 
-<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
-<input type="file" id="galleryInput" accept="image/*" style="display:none">
+<input type="file" id="file" accept="image/*" capture="environment">
 
-<button class="btn" onclick="openCamera()">📷 Tag billede</button>
-<button class="btn secondary" onclick="openGallery()">🗂️ Arkiv</button>
-
+<div id="status"></div>
 <div id="result"></div>
 
 </div>
@@ -80,84 +72,46 @@ img {
 <script>
 const API_URL = "https://ai-pricing-agent.onrender.com/analyze";
 
-function openCamera() {
-  document.getElementById("cameraInput").click();
-}
+document.getElementById("file").addEventListener("change", async function () {
 
-function openGallery() {
-  document.getElementById("galleryInput").click();
-}
-
-document.getElementById("cameraInput").addEventListener("change", handleFile);
-document.getElementById("galleryInput").addEventListener("change", handleFile);
-
-
-// ---------- RESIZE ----------
-function resizeImage(file) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const reader = new FileReader();
-
-    reader.onload = e => img.src = e.target.result;
-
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const MAX = 1024;
-
-      const scale = MAX / img.width;
-
-      canvas.width = MAX;
-      canvas.height = img.height * scale;
-
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.7);
-    };
-
-    reader.readAsDataURL(file);
-  });
-}
-
-
-// ---------- MAIN ----------
-async function handleFile(e) {
-  const file = e.target.files[0];
+  const file = this.files[0];
   if (!file) return;
 
+  // 🔥 NYT: vis korrekt billede med det samme
   const preview = URL.createObjectURL(file);
 
-  // vis med det samme
   document.getElementById("result").innerHTML = `
     <div class="card">
-      <img src="${preview}" />
+      <img src="${preview}">
       <p>Analyserer...</p>
     </div>
   `;
 
-  const resized = await resizeImage(file);
-
   const formData = new FormData();
-  formData.append("file", resized, "image.jpg");
+  formData.append("file", file);
 
-  const res = await fetch(API_URL, {
-    method: "POST",
-    body: formData
-  });
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      body: formData
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  document.getElementById("result").innerHTML = `
-    <div class="card">
-      <img src="${preview}" />
-      <h3>${data.description}</h3>
-      <div class="price">${data.price_range}</div>
-      <div class="meta">
-        ${data.hits_total} fund • ${data.confidence}% sikkerhed
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <img src="${preview}">
+        <h3>${data.description}</h3>
+        <div class="price">${data.price_range}</div>
+        <p>${data.hits_total} fund • ${data.confidence}%</p>
       </div>
-    </div>
-  `;
-}
+    `;
+
+  } catch (err) {
+    document.getElementById("status").innerText = "Fejl";
+  }
+
+});
 </script>
 
 </body>
