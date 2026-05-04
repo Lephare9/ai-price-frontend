@@ -7,28 +7,46 @@
 <style>
 body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #f2f2f7;
+  background: #f7f7f8;
   margin: 0;
   padding: 20px;
 }
 
 .container {
-  max-width: 500px;
+  max-width: 520px;
   margin: auto;
 }
 
-h1 {
+.header {
   text-align: center;
-  font-size: 22px;
   margin-bottom: 20px;
 }
 
-input {
-  width: 100%;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid #ccc;
-  margin-bottom: 10px;
+.header h1 {
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+
+.header p {
+  color: #666;
+  font-size: 14px;
+}
+
+.upload-box {
+  border: 2px dashed #ccc;
+  border-radius: 16px;
+  padding: 30px;
+  text-align: center;
+  cursor: pointer;
+  background: white;
+}
+
+.upload-box:hover {
+  border-color: #999;
+}
+
+input[type="file"] {
+  display: none;
 }
 
 .card {
@@ -62,9 +80,10 @@ img {
   margin-top: 8px;
 }
 
-#status {
+.loading {
   text-align: center;
-  margin-top: 10px;
+  padding: 10px;
+  color: #666;
 }
 </style>
 </head>
@@ -73,11 +92,16 @@ img {
 
 <div class="container">
 
-<h1>AI Pris Scanner</h1>
+<div class="header">
+  <h1>AI Pris Scanner</h1>
+  <p>Upload et billede og få en prisvurdering</p>
+</div>
 
-<input type="file" id="file" accept="image/*" capture="environment">
+<label class="upload-box">
+  <input type="file" id="file" accept="image/*" capture="environment">
+  <p>📸 Tryk for at tage billede</p>
+</label>
 
-<div id="status"></div>
 <div id="result"></div>
 
 </div>
@@ -91,12 +115,12 @@ document.getElementById("file").addEventListener("change", async function () {
   if (!file) return;
 
   const preview = URL.createObjectURL(file);
+  const resultEl = document.getElementById("result");
 
-  // 🔥 vis billede med det samme
-  document.getElementById("result").innerHTML = `
+  resultEl.innerHTML = `
     <div class="card">
       <img src="${preview}">
-      <p>Analyserer...</p>
+      <div class="loading">Analyserer...</div>
     </div>
   `;
 
@@ -111,33 +135,24 @@ document.getElementById("file").addEventListener("change", async function () {
 
     const data = await res.json();
 
-    // 🔥 fallback hvis AI fejler
     if (!data.price_range || data.price_range === "-") {
-      document.getElementById("result").innerHTML = `
-        <div class="card">
-          <img src="${preview}">
-          <p>⚠️ AI er travl – prøv igen</p>
-        </div>
-      `;
-      return;
+      throw new Error();
     }
 
-    document.getElementById("result").innerHTML = `
+    resultEl.innerHTML = `
       <div class="card">
         <img src="${preview}">
         <div class="name">${data.description}</div>
         <div class="price">${data.price_range}</div>
-        <div class="meta">
-          Sikkerhed: ${data.confidence}%
-        </div>
+        <div class="meta">Sikkerhed: ${data.confidence}%</div>
       </div>
     `;
 
   } catch (err) {
-    document.getElementById("result").innerHTML = `
+    resultEl.innerHTML = `
       <div class="card">
         <img src="${preview}">
-        <p>⚠️ Fejl – prøv igen</p>
+        <div class="meta">⚠️ Kunne ikke analysere</div>
       </div>
     `;
   }
