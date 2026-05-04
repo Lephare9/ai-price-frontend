@@ -12,13 +12,11 @@ body {
   padding: 20px;
 }
 
-/* Container */
 .container {
   max-width: 520px;
   margin: auto;
 }
 
-/* Title */
 h1 {
   text-align: center;
   font-size: 26px;
@@ -26,60 +24,44 @@ h1 {
   margin-bottom: 20px;
 }
 
-/* Grid */
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 
-/* Card buttons */
 .action-card {
   aspect-ratio: 1 / 1;
   border-radius: 20px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   cursor: pointer;
   transition: 0.2s;
-  position: relative;
-  overflow: hidden;
 }
 
-/* Press effect */
 .action-card:active {
   transform: scale(0.96);
 }
 
-/* Camera card */
 .camera {
   background: linear-gradient(145deg, #1a1a1a, #000);
   color: white;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
-/* Lens */
 .lens {
   width: 70px;
   height: 70px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #6fd3ff, #001f3f 60%, #000);
-  box-shadow:
-    inset 0 0 15px rgba(255,255,255,0.2),
-    0 0 15px rgba(0,0,0,0.6);
   margin-bottom: 10px;
 }
 
-/* Gallery card */
 .gallery {
   background: linear-gradient(145deg, #ffe066, #ffd43b);
-  box-shadow: 0 10px 25px rgba(255, 200, 0, 0.3);
 }
 
-/* Folder icon */
 .folder {
   width: 70px;
   height: 50px;
@@ -97,28 +79,22 @@ h1 {
   width: 30px;
   height: 12px;
   background: #ffd43b;
-  border-radius: 4px 4px 0 0;
 }
 
-/* Label */
 .label {
   font-size: 15px;
   font-weight: 600;
 }
 
-/* Hide inputs */
 input {
   display: none;
 }
 
-/* Result card */
 .card {
   margin-top: 20px;
   padding: 16px;
   border-radius: 20px;
   background: rgba(255,255,255,0.7);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
 img {
@@ -160,14 +136,12 @@ img {
 
 <div class="actions">
 
-  <!-- Kamera -->
   <label class="action-card camera">
     <div class="lens"></div>
     <div class="label">Tag foto</div>
     <input type="file" id="cameraInput" accept="image/*" capture="environment">
   </label>
 
-  <!-- Arkiv -->
   <label class="action-card gallery">
     <div class="folder"></div>
     <div class="label">Arkiv</div>
@@ -212,8 +186,24 @@ async function handleFile(e) {
 
     const data = await res.json();
 
-    if (!data.price_range || data.price_range === "-") {
-      throw new Error();
+    if (data.error) {
+      let msg = "Fejl – prøv igen";
+
+      if (data.error === "timeout") {
+        msg = "Forbindelse langsom – prøv igen";
+      } else if (data.error === "ai_failed") {
+        msg = "Kunne ikke genkende produkt";
+      } else if (data.error === "parse_error") {
+        msg = "Datafejl – prøv igen";
+      }
+
+      resultEl.innerHTML = `
+        <div class="card">
+          <img src="${preview}">
+          <div class="meta">⚠️ ${msg}</div>
+        </div>
+      `;
+      return;
     }
 
     resultEl.innerHTML = `
@@ -229,7 +219,7 @@ async function handleFile(e) {
     resultEl.innerHTML = `
       <div class="card">
         <img src="${preview}">
-        <div class="meta">⚠️ Kunne ikke analysere</div>
+        <div class="meta">⚠️ Netværksfejl</div>
       </div>
     `;
   }
