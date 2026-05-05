@@ -16,10 +16,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
-# ---------- GEMINI (SAFE) ----------
+# ---------- GEMINI (ROBUST) ----------
 def call_gemini(prompt, image=None):
 
     if not GEMINI_API_KEY:
+        print("NO GEMINI KEY")
         return None
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -35,26 +36,28 @@ def call_gemini(prompt, image=None):
 
     payload = {"contents": [{"parts": parts}]}
 
-    try:
-        r = requests.post(url, json=payload, timeout=8)
+    for i in range(2):  # 🔥 retry
+        try:
+            r = requests.post(url, json=payload, timeout=12)
 
-        if r.status_code != 200:
-            print("GEMINI ERROR:", r.text)
-            return None
+            if r.status_code != 200:
+                print("GEMINI HTTP ERROR:", r.text)
+                continue
 
-        data = r.json()
+            data = r.json()
 
-        if "candidates" not in data:
-            return None
+            if "candidates" in data:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
 
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+            print("GEMINI BAD STRUCT:", data)
 
-    except Exception as e:
-        print("GEMINI FAIL:", e)
-        return None
+        except Exception as e:
+            print("GEMINI EXCEPTION:", e)
+
+    return None
 
 
-# ---------- JSON ----------
+# ---------- JSON SAFE ----------
 def extract_json(text):
 
     if not text:
@@ -68,6 +71,7 @@ def extract_json(text):
             end = text.rfind("}") + 1
             return json.loads(text[start:end])
         except:
+            print("JSON FAIL:", text)
             return {}
 
 
@@ -75,7 +79,7 @@ def extract_json(text):
 def identify(image):
 
     prompt = """
-Identificér produkt.
+Identificér produkt præcist.
 
 Returnér JSON:
 {
@@ -86,10 +90,13 @@ Returnér JSON:
 """
 
     raw = call_gemini(prompt, image)
+    print("RAW GEMINI:", raw)
+
     data = extract_json(raw)
 
-    # 🔒 HARD FAILSAFE
+    # 🔥 FAILSAFE
     if not data or not data.get("name"):
+        print("IDENTIFY FALLBACK")
         return {
             "name": "stol",
             "brand": "",
@@ -102,6 +109,8 @@ Returnér JSON:
         if len(words) > 1:
             data["brand"] = words[0]
 
+    print("IDENTIFIED:", data)
+
     return data
 
 
@@ -112,15 +121,20 @@ def build_query(data):
     brand = data.get("brand", "")
 
     if brand:
-        return f"{brand} {name} stol brugt pris danmark"
+        query = f"{brand} {name} stol brugt pris danmark"
     else:
-        return f"{name} stol brugt pris danmark"
+        query = f"{name} stol brugt pris danmark"
+
+    print("QUERY:", query)
+
+    return query
 
 
 # ---------- GOOGLE ----------
 def google_search(query):
 
     if not SERP_API_KEY:
+        print("NO SERP KEY")
         return []
 
     url = "https://serpapi.com/search"
@@ -151,6 +165,8 @@ def google_search(query):
     except Exception as e:
         print("SEARCH ERROR:", e)
 
+    print("RAW PRICES:", prices[:10])
+
     return prices
 
 
@@ -176,6 +192,8 @@ def smart_filter(prices):
         cut = int(len(filtered) * 0.2)
         filtered = filtered[cut:]
 
+    print("FILTERED:", filtered)
+
     return filtered
 
 
@@ -187,7 +205,10 @@ def calc_price(prices):
 
     avg = sum(prices) / len(prices)
 
-    return int(avg * 0.9), int(avg * 1.1)
+    low = int(avg * 0.9)
+    high = int(avg * 1.1)
+
+    return low, high
 
 
 # ---------- API ----------
@@ -203,7 +224,7 @@ async def analyze(file: UploadFile = File(...)):
     brand = data.get("brand", "")
     category = data.get("category", "")
 
-    # 🔒 BLOCK
+    # 🔴 BLOCK
     if category in ["vehicle", "electronics"]:
         return {
             "description": f"{name}\n{brand}",
@@ -218,13 +239,14 @@ async def analyze(file: UploadFile = File(...)):
 
     # fallback søgning
     if not prices:
+        print("FALLBACK SEARCH")
         prices = google_search(name + " brugt pris")
 
     filtered = smart_filter(prices)
 
     result = calc_price(filtered)
 
-    # 🔒 FINAL FAILSAFE
+    # 🔥 FINAL FAILSAFE
     if not result:
         if filtered:
             avg = sum(filtered) / len(filtered)
@@ -242,4 +264,4 @@ async def analyze(file: UploadFile = File(...)):
 
 @app.get("/")
 def root():
-    return {"status": "ok", "mode": "v15.2-production"}
+    return {"status": "ok", "mode": "v15.2-robust"}
