@@ -16,8 +16,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
-# ---------- GEMINI (RETRY) ----------
+# ---------- GEMINI (SAFE) ----------
 def call_gemini(prompt, image=None):
+
+    if not GEMINI_API_KEY:
+        return None
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
@@ -32,23 +35,26 @@ def call_gemini(prompt, image=None):
 
     payload = {"contents": [{"parts": parts}]}
 
-    for i in range(3):
-        try:
-            r = requests.post(url, json=payload, timeout=15)
-            data = r.json()
+    try:
+        r = requests.post(url, json=payload, timeout=8)
 
-            if "candidates" in data:
-                return data["candidates"][0]["content"]["parts"][0]["text"]
+        if r.status_code != 200:
+            print("GEMINI ERROR:", r.text)
+            return None
 
-            print("GEMINI FAIL:", data)
+        data = r.json()
 
-        except Exception as e:
-            print("ERROR:", e)
+        if "candidates" not in data:
+            return None
 
-    return None
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    except Exception as e:
+        print("GEMINI FAIL:", e)
+        return None
 
 
-# ---------- JSON FIX ----------
+# ---------- JSON ----------
 def extract_json(text):
 
     if not text:
@@ -62,7 +68,6 @@ def extract_json(text):
             end = text.rfind("}") + 1
             return json.loads(text[start:end])
         except:
-            print("JSON FAIL:", text)
             return {}
 
 
@@ -72,26 +77,19 @@ def identify(image):
     prompt = """
 Identificér produkt.
 
-Returnér KUN JSON:
+Returnér JSON:
 {
  "name": "",
  "brand": "",
- "model": "",
- "category": "",
- "material": "",
- "shape": "",
- "style": ""
+ "category": ""
 }
 """
 
     raw = call_gemini(prompt, image)
-    print("RAW GEMINI:", raw)
-
     data = extract_json(raw)
 
-    # 🔥 fallback (ALDRIG tom)
+    # 🔒 HARD FAILSAFE
     if not data or not data.get("name"):
-        print("IDENTIFY FALLBACK")
         return {
             "name": "stol",
             "brand": "",
@@ -99,38 +97,31 @@ Returnér KUN JSON:
         }
 
     # fallback brand
-    if not data.get("brand") and data.get("name"):
-        data["brand"] = data["name"].split()[0]
-
-    # model boost
-    if data.get("brand") and data.get("model"):
-        data["name"] = f"{data['brand']} {data['model']}"
-
-    print("FINAL DATA:", data)
+    if not data.get("brand"):
+        words = data["name"].split()
+        if len(words) > 1:
+            data["brand"] = words[0]
 
     return data
 
 
-# ---------- BUILD QUERY ----------
+# ---------- QUERY ----------
 def build_query(data):
 
-    parts = []
+    name = data.get("name", "")
+    brand = data.get("brand", "")
 
-    for key in ["brand", "name", "material", "shape", "style"]:
-        if data.get(key):
-            parts.append(data[key])
-
-    parts.append("brugt pris danmark")
-
-    query = " ".join(parts)
-
-    print("QUERY:", query)
-
-    return query
+    if brand:
+        return f"{brand} {name} stol brugt pris danmark"
+    else:
+        return f"{name} stol brugt pris danmark"
 
 
 # ---------- GOOGLE ----------
 def google_search(query):
+
+    if not SERP_API_KEY:
+        return []
 
     url = "https://serpapi.com/search"
 
@@ -141,11 +132,11 @@ def google_search(query):
         "gl": "dk"
     }
 
-    try:
-        r = requests.get(url, params=params)
-        data = r.json()
+    prices = []
 
-        prices = []
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        data = r.json()
 
         for res in data.get("organic_results", []):
             text = (res.get("title", "") + " " + res.get("snippet", "")).lower()
@@ -157,20 +148,17 @@ def google_search(query):
                 if 20 < val < 50000:
                     prices.append(val)
 
-        print("GOOGLE PRICES:", prices[:10])
-
-        return prices
-
     except Exception as e:
-        print("GOOGLE ERROR:", e)
-        return []
+        print("SEARCH ERROR:", e)
+
+    return prices
 
 
 # ---------- FILTER ----------
-def smart_filter(prices, brand):
+def smart_filter(prices):
 
-    if not prices:
-        return []
+    if len(prices) < 3:
+        return prices
 
     prices = sorted(prices)
     median = prices[len(prices)//2]
@@ -178,33 +166,28 @@ def smart_filter(prices, brand):
     filtered = []
 
     for p in prices:
-        if p < median * 0.4:
+        if p < median * 0.5:
             continue
-        if p > median * 2.5:
+        if p > median * 2:
             continue
         filtered.append(p)
 
-    if brand:
-        filtered = [p for p in filtered if p > median * 0.6]
-
-    print("FILTERED:", filtered)
+    if len(filtered) > 5:
+        cut = int(len(filtered) * 0.2)
+        filtered = filtered[cut:]
 
     return filtered
 
 
 # ---------- CALC ----------
-def round5(x):
-    return int(round(x / 5) * 5)
-
-
-def calc(prices):
+def calc_price(prices):
 
     if len(prices) < 2:
         return None
 
     avg = sum(prices) / len(prices)
 
-    return round5(avg * 0.9), round5(avg * 1.1)
+    return int(avg * 0.9), int(avg * 1.1)
 
 
 # ---------- API ----------
@@ -219,14 +202,13 @@ async def analyze(file: UploadFile = File(...)):
     name = data.get("name", "")
     brand = data.get("brand", "")
     category = data.get("category", "")
-    condition = data.get("condition", "")
 
-    # 🔴 blokér
+    # 🔒 BLOCK
     if category in ["vehicle", "electronics"]:
         return {
             "description": f"{name}\n{brand}",
             "price_range": "Ikke understøttet",
-            "condition": condition,
+            "condition": "",
             "note": ""
         }
 
@@ -236,30 +218,28 @@ async def analyze(file: UploadFile = File(...)):
 
     # fallback søgning
     if not prices:
-        print("FALLBACK SEARCH")
         prices = google_search(name + " brugt pris")
 
-    prices = smart_filter(prices, brand)
+    filtered = smart_filter(prices)
 
-    result = calc(prices)
+    result = calc_price(filtered)
 
-    # 🔥 sidste fallback (ALDRIG tom)
+    # 🔒 FINAL FAILSAFE
     if not result:
-        if brand:
-            result = (1500, 3500)
+        if filtered:
+            avg = sum(filtered) / len(filtered)
+            result = (int(avg * 0.8), int(avg * 1.2))
         else:
             result = (100, 500)
 
-    min_p, max_p = result
-
     return {
         "description": f"{name}\n{brand}",
-        "price_range": f"{min_p} - {max_p} kr",
-        "condition": condition,
+        "price_range": f"{result[0]} - {result[1]} kr",
+        "condition": "",
         "note": ""
     }
 
 
 @app.get("/")
 def root():
-    return {"status": "ok", "mode": "v15.1-stable"}
+    return {"status": "ok", "mode": "v15.2-production"}
