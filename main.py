@@ -1,9 +1,10 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import os, base64, requests, json, re
+import os, base64, requests, re
 
 app = FastAPI()
 
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,162 +14,149 @@ app.add_middleware(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
-# ---------- GEMINI (DEBUG + SAFE) ----------
-def call_gemini(prompt, image):
+@app.get("/")
+def root():
+    return {"status": "ok - v17.1 AI-first"}
 
-    if not GEMINI_API_KEY:
-        print("❌ NO GEMINI KEY")
-        return None
+
+# ---------- AI BESKRIVELSE ----------
+def describe(img64):
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+
+    prompt = """Svar på dansk.
+
+Beskriv objektet kort og præcist med:
+- type
+- materiale
+- farve
+- form
+
+Eksempel:
+"keramisk bordlampe med beige stofskærm og rund fod"
+
+Ingen forklaring.
+"""
 
     payload = {
         "contents": [{
             "parts": [
                 {"text": prompt},
-                {
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
-                        "data": image
-                    }
-                }
+                {"inline_data": {"mime_type": "image/jpeg", "data": img64}}
             ]
+        }]
+    }
+
+    try:
+        r = requests.post(url, json=payload, timeout=15)
+
+        print("DESC STATUS:", r.status_code)
+
+        if r.status_code != 200:
+            return "ukendt objekt"
+
+        data = r.json()
+        txt = data["candidates"][0]["content"]["parts"][0]["text"]
+
+        txt = txt.lower().strip()
+        txt = re.sub(r"[^\w\sæøå]", "", txt)
+
+        print("DESC:", txt)
+
+        return txt
+
+    except Exception as e:
+        print("DESC ERROR:", e)
+        return "ukendt objekt"
+
+
+# ---------- AI PRIS ----------
+def ai_price(desc):
+
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+
+    prompt = f"""
+Du er ekspert i brugtpriser i Danmark.
+
+Vurder realistisk pris på:
+{desc}
+
+Svar kun med ét tal i danske kroner.
+Ingen forklaring.
+"""
+
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
         }]
     }
 
     try:
         r = requests.post(url, json=payload, timeout=12)
 
-        print("🔍 GEMINI STATUS:", r.status_code)
-        print("🔍 GEMINI RAW RESPONSE:", r.text[:1000])  # truncate
+        print("PRICE STATUS:", r.status_code)
 
         if r.status_code != 200:
             return None
 
         data = r.json()
+        txt = data["candidates"][0]["content"]["parts"][0]["text"]
 
-        if "candidates" not in data:
-            print("❌ NO CANDIDATES FIELD")
-            return None
+        match = re.findall(r"\d+", txt)
 
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        if match:
+            val = int(match[0])
+            print("AI PRICE:", val)
+            return val
+
+        return None
 
     except Exception as e:
-        print("❌ GEMINI EXCEPTION:", e)
+        print("PRICE ERROR:", e)
         return None
 
 
-# ---------- JSON ----------
-def extract_json(text):
+# ---------- STAND / NOTE ----------
+def generate_note(desc):
 
-    if not text:
-        return {}
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
-    try:
-        return json.loads(text)
-    except:
-        try:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            return json.loads(text[start:end])
-        except:
-            print("❌ JSON FAIL:", text)
-            return {}
+    prompt = f"""
+Giv en MEGET kort vurdering af stand for:
+{desc}
 
+Eksempler:
+"middel stand"
+"små brugsspor"
+"god stand"
 
-# ---------- IDENTIFY ----------
-def identify(image):
-
-    prompt = """
-Identificér produkt.
-
-Returnér JSON:
-{
- "name": "",
- "brand": ""
-}
+Kun 2-4 ord.
 """
 
-    raw = call_gemini(prompt, image)
-
-    if raw is None:
-        print("⚠️ GEMINI RETURNED NONE → FALLBACK")
-        return {
-            "name": "stol",
-            "brand": ""
-        }
-
-    data = extract_json(raw)
-
-    if not data or not data.get("name"):
-        print("⚠️ EMPTY JSON → FALLBACK")
-        return {
-            "name": "stol",
-            "brand": ""
-        }
-
-    print("✅ IDENTIFIED:", data)
-
-    return data
-
-
-# ---------- GOOGLE ----------
-def google_prices(query):
-
-    if not SERP_API_KEY:
-        print("❌ NO SERP KEY")
-        return []
-
-    url = "https://serpapi.com/search"
-
-    params = {
-        "q": query,
-        "api_key": SERP_API_KEY,
-        "hl": "da",
-        "gl": "dk"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
 
-    prices = []
-
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.post(url, json=payload, timeout=10)
+
+        if r.status_code != 200:
+            return "middel stand"
+
         data = r.json()
+        txt = data["candidates"][0]["content"]["parts"][0]["text"]
 
-        for res in data.get("organic_results", []):
-            text = (res.get("title", "") + " " + res.get("snippet", "")).lower()
+        txt = txt.lower().strip()
+        txt = re.sub(r"[^\w\sæøå ]", "", txt)
 
-            matches = re.findall(r"(\d{2,5})\s*kr", text)
+        return txt
 
-            for m in matches:
-                val = int(m)
-                if 20 < val < 50000:
-                    prices.append(val)
-
-    except Exception as e:
-        print("❌ SEARCH ERROR:", e)
-
-    print("💰 RAW PRICES:", prices[:10])
-
-    return prices
-
-
-# ---------- FILTER ----------
-def filter_prices(prices):
-
-    if not prices:
-        return []
-
-    prices = sorted(prices)
-    mid = prices[len(prices)//2]
-
-    filtered = [p for p in prices if mid*0.6 < p < mid*1.8]
-
-    print("🔎 FILTERED:", filtered)
-
-    return filtered
+    except:
+        return "middel stand"
 
 
 # ---------- API ----------
@@ -177,45 +165,29 @@ async def analyze(file: UploadFile = File(...)):
 
     img = await file.read()
 
-    print("📸 IMAGE SIZE:", len(img))
-
     if not img:
         return {
-            "description": "ingen fil modtaget",
-            "price_range": "ingen pris"
+            "description": "-",
+            "price": "-",
+            "note": "fejl"
         }
 
     img64 = base64.b64encode(img).decode("utf-8")
 
-    data = identify(img64)
+    # 🔥 BESKRIVELSE
+    desc = describe(img64)
 
-    name = data.get("name", "")
-    brand = data.get("brand", "")
+    # 🔥 PRIS (ALTID)
+    price = ai_price(desc)
 
-    query = f"{name} stol brugt pris"
+    if not price:
+        price = 200  # sidste fallback (aldrig tom)
 
-    print("🔍 QUERY:", query)
-
-    prices = google_prices(query)
-
-    if not prices:
-        prices = google_prices(name)
-
-    prices = filter_prices(prices)
-
-    if len(prices) >= 2:
-        avg = sum(prices) / len(prices)
-        low = int(avg * 0.9)
-        high = int(avg * 1.1)
-    else:
-        low, high = 100, 500
+    # 🔥 NOTE
+    note = generate_note(desc)
 
     return {
-        "description": f"{name}\n{brand}",
-        "price_range": f"{low} - {high} kr"
+        "description": desc,
+        "price": f"{price} kr",
+        "note": note
     }
-
-
-@app.get("/")
-def root():
-    return {"status": "ok", "mode": "v15.2-debug"}
