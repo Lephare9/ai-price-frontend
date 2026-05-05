@@ -1,16 +1,9 @@
-print("🔥 GEMINI FINAL STABLE AGENT 🔥")
-
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import os
-import re
-import json
-import base64
-import requests
+import os, base64, requests, json, re
 
 app = FastAPI()
 
-# 🌐 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,111 +13,253 @@ app.add_middleware(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SERP_API_KEY = os.getenv("SERP_API_KEY")
 
-# ---------- AI ----------
-def analyze_image(image_bytes):
+
+# ---------- GEMINI (RETRY) ----------
+def call_gemini(prompt, image=None):
+
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+
+    parts = [{"text": prompt}]
+    if image:
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": image
+            }
+        })
+
+    payload = {"contents": [{"parts": parts}]}
+
+    for i in range(3):
+        try:
+            r = requests.post(url, json=payload, timeout=15)
+            data = r.json()
+
+            if "candidates" in data:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+
+            print("GEMINI FAIL:", data)
+
+        except Exception as e:
+            print("ERROR:", e)
+
+    return None
+
+
+# ---------- JSON FIX ----------
+def extract_json(text):
+
+    if not text:
+        return {}
+
     try:
-        base64_image = base64.b64encode(image_bytes).decode("utf-8")
+        return json.loads(text)
+    except:
+        try:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            return json.loads(text[start:end])
+        except:
+            print("JSON FAIL:", text)
+            return {}
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={GEMINI_API_KEY}"
 
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": """
-Return ONLY valid JSON.
+# ---------- IDENTIFY ----------
+def identify(image):
 
+    prompt = """
+Identificér produkt.
+
+Returnér KUN JSON:
 {
-  "name": "product name",
-  "price_min": number,
-  "price_max": number,
-  "hits_total": number,
-  "hits_exact": number,
-  "hits_similar": number,
-  "confidence": number
+ "name": "",
+ "brand": "",
+ "model": "",
+ "category": "",
+ "material": "",
+ "shape": "",
+ "style": ""
 }
-
-Rules:
-- Used prices in Denmark (DKK)
-- Always include all fields
 """
-                        },
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": base64_image
-                            }
-                        }
-                    ]
-                }
-            ]
+
+    raw = call_gemini(prompt, image)
+    print("RAW GEMINI:", raw)
+
+    data = extract_json(raw)
+
+    # 🔥 fallback (ALDRIG tom)
+    if not data or not data.get("name"):
+        print("IDENTIFY FALLBACK")
+        return {
+            "name": "stol",
+            "brand": "",
+            "category": "furniture"
         }
 
-        res = requests.post(url, json=payload)
-        data = res.json()
+    # fallback brand
+    if not data.get("brand") and data.get("name"):
+        data["brand"] = data["name"].split()[0]
 
-        print("🔥 RAW API RESPONSE:", data)
+    # model boost
+    if data.get("brand") and data.get("model"):
+        data["name"] = f"{data['brand']} {data['model']}"
 
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text
+    print("FINAL DATA:", data)
 
-    except Exception as e:
-        print("🔥 GEMINI ERROR:", str(e))
-        return ""
+    return data
 
 
-# ---------- JSON ----------
-def extract_json(text):
-    try:
-        text = text.replace("```json", "").replace("```", "").strip()
-        match = re.search(r"\{.*\}", text, re.DOTALL)
+# ---------- BUILD QUERY ----------
+def build_query(data):
 
-        if match:
-            parsed = json.loads(match.group())
-            print("🔥 PARSED JSON:", parsed)
-            return parsed
+    parts = []
 
-    except Exception as e:
-        print("🔥 JSON ERROR:", str(e))
+    for key in ["brand", "name", "material", "shape", "style"]:
+        if data.get(key):
+            parts.append(data[key])
 
-    return {
-        "name": "ukendt",
-        "price_min": 0,
-        "price_max": 0,
-        "hits_total": 0,
-        "hits_exact": 0,
-        "hits_similar": 0,
-        "confidence": 0
+    parts.append("brugt pris danmark")
+
+    query = " ".join(parts)
+
+    print("QUERY:", query)
+
+    return query
+
+
+# ---------- GOOGLE ----------
+def google_search(query):
+
+    url = "https://serpapi.com/search"
+
+    params = {
+        "q": query,
+        "api_key": SERP_API_KEY,
+        "hl": "da",
+        "gl": "dk"
     }
+
+    try:
+        r = requests.get(url, params=params)
+        data = r.json()
+
+        prices = []
+
+        for res in data.get("organic_results", []):
+            text = (res.get("title", "") + " " + res.get("snippet", "")).lower()
+
+            matches = re.findall(r"(\d{2,5})[\s.,-]*kr", text)
+
+            for m in matches:
+                val = int(m)
+                if 20 < val < 50000:
+                    prices.append(val)
+
+        print("GOOGLE PRICES:", prices[:10])
+
+        return prices
+
+    except Exception as e:
+        print("GOOGLE ERROR:", e)
+        return []
+
+
+# ---------- FILTER ----------
+def smart_filter(prices, brand):
+
+    if not prices:
+        return []
+
+    prices = sorted(prices)
+    median = prices[len(prices)//2]
+
+    filtered = []
+
+    for p in prices:
+        if p < median * 0.4:
+            continue
+        if p > median * 2.5:
+            continue
+        filtered.append(p)
+
+    if brand:
+        filtered = [p for p in filtered if p > median * 0.6]
+
+    print("FILTERED:", filtered)
+
+    return filtered
+
+
+# ---------- CALC ----------
+def round5(x):
+    return int(round(x / 5) * 5)
+
+
+def calc(prices):
+
+    if len(prices) < 2:
+        return None
+
+    avg = sum(prices) / len(prices)
+
+    return round5(avg * 0.9), round5(avg * 1.1)
 
 
 # ---------- API ----------
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
-    print("🔥 ENDPOINT HIT")
 
-    image_bytes = await file.read()
-    print("🔥 IMAGE SIZE:", len(image_bytes))
+    img = await file.read()
+    img64 = base64.b64encode(img).decode()
 
-    ai_response = analyze_image(image_bytes)
-    data = extract_json(ai_response)
+    data = identify(img64)
 
-    result = {
-        "description": data.get("name", "ukendt"),
-        "price_range": f"{data.get('price_min',0)} - {data.get('price_max',0)} kr",
-        "hits_total": data.get("hits_total", 0),
-        "hits_exact": data.get("hits_exact", 0),
-        "hits_similar": data.get("hits_similar", 0),
-        "confidence": data.get("confidence", 0)
+    name = data.get("name", "")
+    brand = data.get("brand", "")
+    category = data.get("category", "")
+    condition = data.get("condition", "")
+
+    # 🔴 blokér
+    if category in ["vehicle", "electronics"]:
+        return {
+            "description": f"{name}\n{brand}",
+            "price_range": "Ikke understøttet",
+            "condition": condition,
+            "note": ""
+        }
+
+    query = build_query(data)
+
+    prices = google_search(query)
+
+    # fallback søgning
+    if not prices:
+        print("FALLBACK SEARCH")
+        prices = google_search(name + " brugt pris")
+
+    prices = smart_filter(prices, brand)
+
+    result = calc(prices)
+
+    # 🔥 sidste fallback (ALDRIG tom)
+    if not result:
+        if brand:
+            result = (1500, 3500)
+        else:
+            result = (100, 500)
+
+    min_p, max_p = result
+
+    return {
+        "description": f"{name}\n{brand}",
+        "price_range": f"{min_p} - {max_p} kr",
+        "condition": condition,
+        "note": ""
     }
-
-    print("🔥 FINAL RESPONSE:", result)
-
-    return result
 
 
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "mode": "v15.1-stable"}
