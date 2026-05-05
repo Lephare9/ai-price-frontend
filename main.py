@@ -16,10 +16,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
-# ---------- GEMINI ----------
+# ---------- GEMINI (DEBUG + SAFE) ----------
 def call_gemini(prompt, image):
 
     if not GEMINI_API_KEY:
+        print("❌ NO GEMINI KEY")
         return None
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -39,22 +40,24 @@ def call_gemini(prompt, image):
     }
 
     try:
-        r = requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=12)
+
+        print("🔍 GEMINI STATUS:", r.status_code)
+        print("🔍 GEMINI RAW RESPONSE:", r.text[:1000])  # truncate
 
         if r.status_code != 200:
-            print("GEMINI HTTP ERROR")
             return None
 
         data = r.json()
 
         if "candidates" not in data:
-            print("NO CANDIDATES")
+            print("❌ NO CANDIDATES FIELD")
             return None
 
         return data["candidates"][0]["content"]["parts"][0]["text"]
 
     except Exception as e:
-        print("GEMINI FAIL:", e)
+        print("❌ GEMINI EXCEPTION:", e)
         return None
 
 
@@ -72,6 +75,7 @@ def extract_json(text):
             end = text.rfind("}") + 1
             return json.loads(text[start:end])
         except:
+            print("❌ JSON FAIL:", text)
             return {}
 
 
@@ -79,7 +83,7 @@ def extract_json(text):
 def identify(image):
 
     prompt = """
-Identificér produkt (kort).
+Identificér produkt.
 
 Returnér JSON:
 {
@@ -90,9 +94,8 @@ Returnér JSON:
 
     raw = call_gemini(prompt, image)
 
-    # 🔥 hvis Gemini fejler → HARD fallback
     if raw is None:
-        print("GEMINI FAIL → USING DEFAULT")
+        print("⚠️ GEMINI RETURNED NONE → FALLBACK")
         return {
             "name": "stol",
             "brand": ""
@@ -101,10 +104,13 @@ Returnér JSON:
     data = extract_json(raw)
 
     if not data or not data.get("name"):
+        print("⚠️ EMPTY JSON → FALLBACK")
         return {
             "name": "stol",
             "brand": ""
         }
+
+    print("✅ IDENTIFIED:", data)
 
     return data
 
@@ -113,6 +119,7 @@ Returnér JSON:
 def google_prices(query):
 
     if not SERP_API_KEY:
+        print("❌ NO SERP KEY")
         return []
 
     url = "https://serpapi.com/search"
@@ -140,8 +147,10 @@ def google_prices(query):
                 if 20 < val < 50000:
                     prices.append(val)
 
-    except:
-        pass
+    except Exception as e:
+        print("❌ SEARCH ERROR:", e)
+
+    print("💰 RAW PRICES:", prices[:10])
 
     return prices
 
@@ -155,7 +164,11 @@ def filter_prices(prices):
     prices = sorted(prices)
     mid = prices[len(prices)//2]
 
-    return [p for p in prices if mid*0.6 < p < mid*1.8]
+    filtered = [p for p in prices if mid*0.6 < p < mid*1.8]
+
+    print("🔎 FILTERED:", filtered)
+
+    return filtered
 
 
 # ---------- API ----------
@@ -163,15 +176,25 @@ def filter_prices(prices):
 async def analyze(file: UploadFile = File(...)):
 
     img = await file.read()
-    img64 = base64.b64encode(img).decode()
+
+    print("📸 IMAGE SIZE:", len(img))
+
+    if not img:
+        return {
+            "description": "ingen fil modtaget",
+            "price_range": "ingen pris"
+        }
+
+    img64 = base64.b64encode(img).decode("utf-8")
 
     data = identify(img64)
 
     name = data.get("name", "")
     brand = data.get("brand", "")
 
-    # 🔥 altid brug simpelt query (mere stabil)
     query = f"{name} stol brugt pris"
+
+    print("🔍 QUERY:", query)
 
     prices = google_prices(query)
 
@@ -181,20 +204,18 @@ async def analyze(file: UploadFile = File(...)):
     prices = filter_prices(prices)
 
     if len(prices) >= 2:
-        avg = sum(prices)/len(prices)
-        low = int(avg*0.9)
-        high = int(avg*1.1)
+        avg = sum(prices) / len(prices)
+        low = int(avg * 0.9)
+        high = int(avg * 1.1)
     else:
         low, high = 100, 500
 
     return {
         "description": f"{name}\n{brand}",
-        "price_range": f"{low} - {high} kr",
-        "condition": "",
-        "note": ""
+        "price_range": f"{low} - {high} kr"
     }
 
 
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "mode": "v15.2-debug"}
