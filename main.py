@@ -1,103 +1,181 @@
 import os
-from fastapi import FastAPI, File, UploadFile
+import logging
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from google import genai
-import base64
+import google.generativeai as genai
+import requests
 
-print("🔥 AI PRICING AGENT v17 🔥")
+# =========================
+# LOGGING
+# =========================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ai-pricing-agent")
 
-# --- ENV ---
+logger.info("🔥 AI PRICING AGENT v1 STARTING")
+
+# =========================
+# ENV
+# =========================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
-if GEMINI_API_KEY:
-    print("🔑 GEMINI: OK")
-else:
-    print("❌ GEMINI KEY MISSING")
+if not GEMINI_API_KEY:
+    logger.error("❌ GEMINI_API_KEY missing")
 
-# --- APP ---
+if not SERPAPI_KEY:
+    logger.error("❌ SERPAPI_KEY missing")
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+# =========================
+# APP
+# =========================
 app = FastAPI()
 
-# --- CORS FIX ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # kan strammes senere
+    allow_origins=["*"],  # sæt din Netlify URL senere
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- ROOT ---
+# =========================
+# ROOT
+# =========================
 @app.get("/")
 def root():
-    return {"status": "ok", "version": "v17"}
+    return {"status": "ok", "version": "v1"}
+
+# =========================
+# HELPER: GEMINI
+# =========================
+def detect_object(image_bytes: bytes, mime_type: str) -> str:
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+
+        response = model.generate_content([
+            {
+                "mime_type": mime_type,
+                "data": image_bytes
+            },
+            "Identify the object in this image. Return ONLY 1-3 words. No sentence."
+        ])
+
+        text = (response.text or "").strip().lower()
+
+        if not text or len(text) > 40:
+            logger.warning(f"⚠️ Bad Gemini output: {text}")
+            return "genstand"
+
+        return text
+
+    except Exception as e:
+        logger.error(f"🚨 GEMINI ERROR: {str(e)}")
+        raise
 
 
-# --- GEMINI FALLBACK ---
-def call_gemini(client, image_bytes):
-    models = [
-        "gemini-1.5-flash-latest",
-        "gemini-2.0-flash",
-        "gemini-1.0-pro"
-    ]
+# =========================
+# HELPER: SERPAPI
+# =========================
+def fetch_prices(query: str):
+    try:
+        params = {
+            "engine": "google_shopping",
+            "q": query,
+            "api_key": SERPAPI_KEY
+        }
 
-    for model in models:
-        try:
-            print(f"⚡ TRY MODEL: {model}")
+        r = requests.get(
+            "https://serpapi.com/search",
+            params=params,
+            timeout=10
+        )
 
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    "Hvad er dette objekt? Svar kort med navn.",
-                    {
-                        "mime_type": "image/jpeg",
-                        "data": image_bytes
-                    }
-                ]
-            )
+        if r.status_code != 200:
+            logger.error(f"SERPAPI HTTP {r.status_code}")
+            return []
 
-            text = response.text.strip()
-            print("🧠 GEMINI:", text)
+        data = r.json()
 
-            if text:
-                return text
+        prices = []
 
-        except Exception as e:
-            print(f"❌ FAIL {model}:", str(e))
+        for item in data.get("shopping_results", []):
+            raw = item.get("price")
+            if not raw:
+                continue
 
-    return None
+            digits = "".join(c for c in raw if c.isdigit())
+            if digits:
+                prices.append(int(digits))
+
+        return prices
+
+    except Exception as e:
+        logger.error(f"🚨 SERPAPI ERROR: {str(e)}")
+        return []
 
 
-# --- ANALYZE ---
+# =========================
+# ANALYZE
+# =========================
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
-    print("=== /analyze ===")
-
-    contents = await file.read()
-    print(f"📷 SIZE: {len(contents)}")
+    logger.info("=== /analyze ===")
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        image_bytes = await file.read()
 
-        # Gemini call
-        result = call_gemini(client, contents)
-
-        if not result:
+        if not image_bytes:
             return {
-                "name": "Kunne ikke analysere billede",
+                "title": "Ingen fil",
                 "price": 0,
                 "results": []
             }
 
+        logger.info(f"📷 SIZE: {len(image_bytes)} bytes")
+        logger.info(f"📷 MIME: {file.content_type}")
+
+        # =========================
+        # GEMINI
+        # =========================
+        try:
+            title = detect_object(image_bytes, file.content_type)
+            logger.info(f"🧠 OBJECT: {title}")
+
+        except Exception:
+            return {
+                "title": "Kunne ikke analysere",
+                "price": 0,
+                "results": []
+            }
+
+        # =========================
+        # SERPAPI
+        # =========================
+        prices = fetch_prices(f"{title} used price")
+
+        logger.info(f"💰 PRICES: {prices}")
+
+        if prices:
+            avg_price = int(sum(prices) / len(prices))
+        else:
+            avg_price = 0
+
+        # =========================
+        # RESPONSE
+        # =========================
         return {
-            "name": result,
-            "price": 100,
-            "results": []
+            "title": title,
+            "price": avg_price,
+            "results": prices
         }
 
     except Exception as e:
-        print("🚨 TOTAL FEJL:", str(e))
+        logger.error(f"🔥 CRASH: {str(e)}")
+
         return {
-            "name": "Fejl",
+            "title": "Server fejl",
             "price": 0,
             "results": []
         }
