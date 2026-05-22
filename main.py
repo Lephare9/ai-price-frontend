@@ -11,8 +11,10 @@ import urllib.parse
 
 app = FastAPI()
 
+import os
+
 genai.configure(
-    api_key="AIzaSyB_gcj4MIE80mwwLBlaAwerbUHtvLF0ITM"
+    api_key=os.getenv("GEMINI_API_KEY")
 )
 
 model = genai.GenerativeModel(
