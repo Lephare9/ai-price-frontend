@@ -1,181 +1,157 @@
-import os
-import logging
 from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
 import google.generativeai as genai
-import requests
 
-# =========================
-# LOGGING
-# =========================
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ai-pricing-agent")
+from PIL import Image
 
-logger.info("🔥 AI PRICING AGENT v1 STARTING")
+import tempfile
+import shutil
+import urllib.parse
 
-# =========================
-# ENV
-# =========================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-SERPAPI_KEY = os.getenv("SERPAPI_KEY")
-
-if not GEMINI_API_KEY:
-    logger.error("❌ GEMINI_API_KEY missing")
-
-if not SERPAPI_KEY:
-    logger.error("❌ SERPAPI_KEY missing")
-
-genai.configure(api_key=GEMINI_API_KEY)
-
-# =========================
-# APP
-# =========================
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # sæt din Netlify URL senere
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+genai.configure(
+    api_key="AIzaSyB_gcj4MIE80mwwLBlaAwerbUHtvLF0ITM"
 )
 
-# =========================
-# ROOT
-# =========================
-@app.get("/")
-def root():
-    return {"status": "ok", "version": "v1"}
+model = genai.GenerativeModel(
+    "gemini-2.5-flash"
+)
 
-# =========================
-# HELPER: GEMINI
-# =========================
-def detect_object(image_bytes: bytes, mime_type: str) -> str:
+PROMPT = """
+Du vurderer brugtpriser i Danmark.
+
+Beskriv varen kort på én linje.
+
+Skriv derefter:
+Pris: xxx kr
+
+Pris skal være realistisk og relativt smalt interval.
+Brug cirka ±15%.
+
+Undgå brede intervaller.
+
+Returner kun svaret.
+"""
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+
+    with open(
+        "index.html",
+        encoding="utf-8"
+    ) as f:
+
+        return f.read()
+
+@app.post("/analyze")
+async def analyze(
+
+    image1: UploadFile = File(...),
+    image2: UploadFile = File(None)
+
+):
+
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
 
-        response = model.generate_content([
-            {
-                "mime_type": mime_type,
-                "data": image_bytes
-            },
-            "Identify the object in this image. Return ONLY 1-3 words. No sentence."
-        ])
+        images = []
 
-        text = (response.text or "").strip().lower()
+        for file in [image1, image2]:
 
-        if not text or len(text) > 40:
-            logger.warning(f"⚠️ Bad Gemini output: {text}")
-            return "genstand"
-
-        return text
-
-    except Exception as e:
-        logger.error(f"🚨 GEMINI ERROR: {str(e)}")
-        raise
-
-
-# =========================
-# HELPER: SERPAPI
-# =========================
-def fetch_prices(query: str):
-    try:
-        params = {
-            "engine": "google_shopping",
-            "q": query,
-            "api_key": SERPAPI_KEY
-        }
-
-        r = requests.get(
-            "https://serpapi.com/search",
-            params=params,
-            timeout=10
-        )
-
-        if r.status_code != 200:
-            logger.error(f"SERPAPI HTTP {r.status_code}")
-            return []
-
-        data = r.json()
-
-        prices = []
-
-        for item in data.get("shopping_results", []):
-            raw = item.get("price")
-            if not raw:
+            if not file:
                 continue
 
-            digits = "".join(c for c in raw if c.isdigit())
-            if digits:
-                prices.append(int(digits))
+            print("")
+            print("========================")
+            print("PROCESSING IMAGE")
+            print("========================")
 
-        return prices
+            temp_file = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".jpg"
+            )
 
-    except Exception as e:
-        logger.error(f"🚨 SERPAPI ERROR: {str(e)}")
-        return []
+            with open(
+                temp_file.name,
+                "wb"
+            ) as buffer:
 
+                shutil.copyfileobj(
+                    file.file,
+                    buffer
+                )
 
-# =========================
-# ANALYZE
-# =========================
-@app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
-    logger.info("=== /analyze ===")
+            image = Image.open(
+                temp_file.name
+            )
 
-    try:
-        image_bytes = await file.read()
+            print("ORIGINAL SIZE:", image.size)
 
-        if not image_bytes:
-            return {
-                "title": "Ingen fil",
-                "price": 0,
-                "results": []
-            }
+            image.thumbnail((1200,1200))
 
-        logger.info(f"📷 SIZE: {len(image_bytes)} bytes")
-        logger.info(f"📷 MIME: {file.content_type}")
+            print("THUMBNAIL SIZE:", image.size)
 
-        # =========================
-        # GEMINI
-        # =========================
-        try:
-            title = detect_object(image_bytes, file.content_type)
-            logger.info(f"🧠 OBJECT: {title}")
+            clean_path = (
+                temp_file.name + "_clean.jpg"
+            )
 
-        except Exception:
-            return {
-                "title": "Kunne ikke analysere",
-                "price": 0,
-                "results": []
-            }
+            image.convert("RGB").save(
+                clean_path,
+                "JPEG",
+                quality=85
+            )
 
-        # =========================
-        # SERPAPI
-        # =========================
-        prices = fetch_prices(f"{title} used price")
+            final_image = Image.open(
+                clean_path
+            )
 
-        logger.info(f"💰 PRICES: {prices}")
+            images.append(final_image)
 
-        if prices:
-            avg_price = int(sum(prices) / len(prices))
-        else:
-            avg_price = 0
+        print("")
+        print("========================")
+        print("TOTAL IMAGES:", len(images))
+        print("========================")
 
-        # =========================
-        # RESPONSE
-        # =========================
+        response = model.generate_content(
+            [PROMPT] + images
+        )
+
+        text = response.text.strip()
+
+        print("")
+        print("========================")
+        print("GEMINI RESPONSE")
+        print("========================")
+        print(text)
+
+        first_line = (
+            text.split("\n")[0]
+        )
+
+        search_query = urllib.parse.quote(
+            first_line
+        )
+
+        dba_link = (
+            f"https://www.dba.dk/soeg/?soeg={search_query}"
+        )
+
         return {
-            "title": title,
-            "price": avg_price,
-            "results": prices
+            "result": text,
+            "dba_link": dba_link
         }
 
     except Exception as e:
-        logger.error(f"🔥 CRASH: {str(e)}")
+
+        print("")
+        print("========================")
+        print("ERROR")
+        print("========================")
+        print(e)
+        print("")
 
         return {
-            "title": "Server fejl",
-            "price": 0,
-            "results": []
+            "result": f"FEJL: {str(e)}",
+            "dba_link": "https://www.dba.dk"
         }
