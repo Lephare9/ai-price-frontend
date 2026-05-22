@@ -8,10 +8,9 @@ from PIL import Image
 import tempfile
 import shutil
 import urllib.parse
+import os
 
 app = FastAPI()
-
-import os
 
 genai.configure(
     api_key=os.getenv("GEMINI_API_KEY")
@@ -56,6 +55,11 @@ async def analyze(
 ):
 
     try:
+
+        print("")
+        print("========================")
+        print("ANALYZE CALLED")
+        print("========================")
 
         images = []
 
@@ -115,11 +119,21 @@ async def analyze(
         print("TOTAL IMAGES:", len(images))
         print("========================")
 
+        print("")
+        print("========================")
+        print("CALLING GEMINI")
+        print("========================")
+
         response = model.generate_content(
             [PROMPT] + images
         )
 
         text = response.text.strip()
+
+        text = text.replace("Navn:", "")
+        text = text.replace("navn:", "")
+
+        text = text.strip()
 
         print("")
         print("========================")
@@ -150,10 +164,9 @@ async def analyze(
         print("========================")
         print("ERROR")
         print("========================")
-        print(e)
+        print(str(e))
         print("")
 
         return {
-            "result": f"FEJL: {str(e)}",
-            "dba_link": "https://www.dba.dk"
+            "error": str(e)
         }
